@@ -26,6 +26,8 @@ answers, mappings or highlight coordinates is hardcoded.
 | Exact highlighting | Normalized 0–1 boxes from real ink detection, rendered as CSS percentages |
 | Confidence | Every mapping carries a score, a band, and the reasons behind it |
 | Degraded runs | When an optional AI step cannot run, the results screen names the cause — expired key, exhausted quota, wrong model, network — instead of silently omitting it |
+| Two-way sync | Clicking a question scrolls the sheet to its answer; clicking a region on the sheet opens that question |
+| Grading summary | Score, percentage and correct/partial/incorrect/unanswered/needs-review tallies, all computed from the run |
 | Progress | Stage-based, driven by the backend's real position in the pipeline |
 
 ---
@@ -281,6 +283,39 @@ byte-identical to the Gemini run, with handwriting transcription degraded as
 expected.
 
 ---
+
+### Reading the answer sheet
+
+The sheet is one continuous scroll, not a page-at-a-time viewer, so an answer
+that runs across a page break is followed in a single motion. Page numbers are a
+position readout and a nudge, never the only way to move.
+
+Selecting a question scrolls its answer into view and outlines it in green.
+Every *other* detected answer stays on the page as a quiet dashed outline that is
+itself clickable — so the sheet reads as a map of the whole booklet, and the
+teacher can go from a region back to its question as easily as the other way
+round.
+
+Three details that took a bug each to get right, all worth knowing if you touch
+this code:
+
+- Scrolling is driven imperatively from the click handler, not from an effect
+  keyed on the selected region. Re-selecting the question that is already
+  selected yields an identical target, so an effect would not re-run and the
+  sheet would sit still — exactly what clicking again asks it not to do.
+- Scroll offsets come from `getBoundingClientRect`, not `offsetTop`. The results
+  panel animates in on mount, and that transform changes what `offsetParent`
+  resolves to, silently moving `offsetTop` onto a different origin.
+- Each page reserves its box with `aspect-ratio`, so a scroll requested during
+  the first paint measures a real height rather than a collapsed one.
+
+### Controls that are not part of this build
+
+The Figma shows the wider VedaAI product: Home, My Classroom, Assignments, My
+Library, Settings, notifications, the AI toolkit. Those are drawn because
+removing them would misrepresent the design, but each is disabled, lock-marked
+and explains itself on hover, focus and tap. Nothing in the interface looks
+clickable and then does nothing.
 
 ### Mandatory vs. optional stages
 
