@@ -332,6 +332,12 @@ export async function runPipeline(params: {
       onPageStart: (pageNumber, total) => {
         void tracker.detail("reading-question-paper", `Page ${pageNumber} of ${total}`);
       },
+      onPageNote: (pageNumber, total, note) => {
+        void tracker.detail(
+          "reading-question-paper",
+          `Page ${pageNumber} of ${total} · ${note}`,
+        );
+      },
     });
     await tracker.complete(stage, `${paperTranscript.blocks.length} region(s) read`);
 
@@ -371,6 +377,12 @@ export async function runPipeline(params: {
       vision: providers.vision,
       onPageStart: (pageNumber, total) => {
         void tracker.detail("reading-answer-sheet", `Page ${pageNumber} of ${total}`);
+      },
+      onPageNote: (pageNumber, total, note) => {
+        void tracker.detail(
+          "reading-answer-sheet",
+          `Page ${pageNumber} of ${total} · ${note}`,
+        );
       },
     });
     await tracker.complete(stage, `${sheetTranscript.blocks.length} region(s) read`);

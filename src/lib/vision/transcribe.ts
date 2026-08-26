@@ -134,8 +134,10 @@ export async function transcribeDocument(params: {
   mode: Mode;
   vision: VisionProvider;
   onPageStart?: (pageNumber: number, total: number) => void;
+  /** Progress note while a page is being retried, so the UI is not silent. */
+  onPageNote?: (pageNumber: number, total: number, note: string) => void;
 }): Promise<DocumentTranscript> {
-  const { bitmaps, mode, vision, onPageStart } = params;
+  const { bitmaps, mode, vision, onPageStart, onPageNote } = params;
   const tuning = TUNING[mode];
 
   const blocks: TranscribedBlock[] = [];
@@ -174,6 +176,7 @@ export async function transcribeDocument(params: {
       pageCount: bitmaps.length,
       pageContext: context,
       previousPageTail,
+      onRetry: (note) => onPageNote?.(bitmap.pageNumber, bitmaps.length, note),
       regions: capped.map((block, index) => ({
         index: block.index,
         jpeg: crops[index],

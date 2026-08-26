@@ -16,6 +16,12 @@ export type TranscribeInput = {
   pageNumber: number;
   pageCount: number;
   regions: RegionImage[];
+  /**
+   * Called when a request is being retried. A stalling provider otherwise
+   * leaves the progress UI on the same line for minutes, which reads as a
+   * frozen app rather than as work still in progress.
+   */
+  onRetry?: (note: string) => void;
   /** Whole-page thumbnail supplied as spatial context for the crops. */
   pageContext: Buffer;
   /**
@@ -76,6 +82,22 @@ export function classifyDegradation(error: unknown): DegradationKind {
 }
 
 /** One sentence per cause, written for a teacher rather than an operator. */
+/** Short progress line for a retry in flight, e.g. "retrying (2/5) — timed out". */
+export function describeRetry(notice: RetryNotice): string {
+  const cause =
+    notice.kind === "quota"
+      ? "provider quota reached"
+      : notice.kind === "network"
+        ? "connection stalled"
+        : notice.kind === "provider_unavailable"
+          ? "provider overloaded"
+          : "provider error";
+  const seconds = Math.round(notice.waitMs / 1000);
+  return `retrying ${notice.attempt}/${notice.attempts} — ${cause}${
+    seconds > 2 ? `, waiting ${seconds}s` : ""
+  }`;
+}
+
 export function describeDegradation(
   kind: DegradationKind,
   step: string,
@@ -252,9 +274,24 @@ function getPacer(): RequestPacer {
 
 const MAX_RATE_LIMIT_WAIT_MS = 65_000;
 
+export type RetryNotice = {
+  attempt: number;
+  attempts: number;
+  waitMs: number;
+  kind: DegradationKind;
+};
+
 export async function withRetry<T>(
   operation: () => Promise<T>,
-  { attempts = 5, baseDelayMs = 800 } = {},
+  {
+    attempts = 5,
+    baseDelayMs = 800,
+    onRetry,
+  }: {
+    attempts?: number;
+    baseDelayMs?: number;
+    onRetry?: (notice: RetryNotice) => void;
+  } = {},
 ): Promise<T> {
   let lastError: unknown;
 
@@ -280,11 +317,28 @@ export async function withRetry<T>(
         const providerError = error as ProviderError;
         const hinted = (providerError.retryAfterSeconds ?? 0) * 1000;
         const fallback = Math.min(MAX_RATE_LIMIT_WAIT_MS, 6_000 * 2 ** attempt);
-        await sleep(Math.min(MAX_RATE_LIMIT_WAIT_MS, Math.max(hinted, fallback)));
+        const waitMs = Math.min(
+          MAX_RATE_LIMIT_WAIT_MS,
+          Math.max(hinted, fallback),
+        );
+        onRetry?.({
+          attempt: attempt + 1,
+          attempts,
+          waitMs,
+          kind: classifyDegradation(error),
+        });
+        await sleep(waitMs);
         continue;
       }
 
-      await sleep(baseDelayMs * 2 ** attempt + Math.random() * 250);
+      const waitMs = baseDelayMs * 2 ** attempt + Math.random() * 250;
+      onRetry?.({
+        attempt: attempt + 1,
+        attempts,
+        waitMs,
+        kind: classifyDegradation(error),
+      });
+      await sleep(waitMs);
     }
   }
 

@@ -2,6 +2,7 @@ import "server-only";
 import {
   chunkRegions,
   classifyDegradation,
+  describeRetry,
   fetchWithTimeout,
   ProviderAuthError,
   ProviderError,
@@ -185,8 +186,12 @@ function createVision(apiKey: string, model: string): VisionProvider {
     if (input.regions.length === 0) return [];
     const results: RegionTranscription[] = [];
     for (const batch of chunkRegions(input.regions)) {
-      const raw = await withRetry(() =>
-        createMessage({ apiKey, model, system, blocks: buildBlocks(input, batch) }),
+      const raw = await withRetry(
+        () =>
+          createMessage({ apiKey, model, system, blocks: buildBlocks(input, batch) }),
+        {
+          onRetry: (notice) => input.onRetry?.(describeRetry(notice)),
+        },
       );
       results.push(...parseRegions(raw, batch.map((region) => region.index)));
     }
