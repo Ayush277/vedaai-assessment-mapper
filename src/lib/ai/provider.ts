@@ -99,6 +99,22 @@ export class RateLimitError extends ProviderError {
   }
 }
 
+/**
+ * The configured credentials were rejected.
+ *
+ * This is its own type because the HTTP status alone does not identify it:
+ * Gemini reports an invalid key as 400, which is indistinguishable from a
+ * malformed request unless you read the body. Each provider recognises its own
+ * shape and throws this, so the pipeline can tell the operator to check the key
+ * rather than sending them to look at the model name.
+ */
+export class ProviderAuthError extends ProviderError {
+  constructor(message: string, status = 401) {
+    super(message, status);
+    this.name = "ProviderAuthError";
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /*                                   Factory                                  */
 /* -------------------------------------------------------------------------- */
@@ -224,15 +240,41 @@ export async function withRetry<T>(
     : new ProviderError("Provider request failed");
 }
 
+export class ProviderNetworkError extends ProviderError {
+  constructor(message: string) {
+    // No HTTP status: the request never got far enough to have one. That keeps
+    // it out of `isPermanent`, so withRetry treats it as worth retrying.
+    super(message);
+    this.name = "ProviderNetworkError";
+  }
+}
+
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit,
   timeoutMs = 90_000,
 ): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
   try {
     return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    // A timeout or a dropped connection arrives here as a DOMException or a
+    // TypeError, neither of which any caller can classify. Normalising them
+    // into ProviderError means retry policy and user-facing messages are
+    // decided in exactly one place for every kind of provider failure.
+    if (timedOut) {
+      throw new ProviderNetworkError(
+        `Provider request timed out after ${Math.round(timeoutMs / 1000)}s.`,
+      );
+    }
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new ProviderNetworkError(`Could not reach the provider: ${detail}`);
   } finally {
     clearTimeout(timer);
   }

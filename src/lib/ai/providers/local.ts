@@ -28,9 +28,17 @@ async function createWorker() {
 
 let workerPromise: Promise<Worker> | null = null;
 
+/**
+ * The worker downloads its language data on first use, so it is created once
+ * and reused. The memo is cleared on failure — caching a rejected promise
+ * would mean one flaky download permanently disabled OCR for the process.
+ */
 async function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker();
+    workerPromise = createWorker().catch((error) => {
+      workerPromise = null;
+      throw error;
+    });
   }
   return workerPromise;
 }

@@ -30,12 +30,21 @@ let libraryPromise: Promise<
   Awaited<ReturnType<PdfiumModule["PDFiumLibrary"]["init"]>>
 > | null = null;
 
-/** The WASM module is expensive to instantiate, so it is created once. */
+/**
+ * The WASM module is expensive to instantiate, so it is created once.
+ *
+ * The memo is cleared if initialisation rejects. Caching a rejected promise
+ * would poison every later call for the lifetime of the process: one transient
+ * failure at startup and no PDF could ever be rendered again without a restart.
+ */
 async function getLibrary() {
   if (!libraryPromise) {
-    libraryPromise = import("@hyzyla/pdfium").then((mod) =>
-      mod.PDFiumLibrary.init(),
-    );
+    libraryPromise = import("@hyzyla/pdfium")
+      .then((mod) => mod.PDFiumLibrary.init())
+      .catch((error) => {
+        libraryPromise = null;
+        throw error;
+      });
   }
   return libraryPromise;
 }

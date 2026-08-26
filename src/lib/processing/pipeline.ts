@@ -1,7 +1,12 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import { config } from "@/lib/config";
-import { getProviders, ProviderError } from "@/lib/ai/provider";
+import {
+  getProviders,
+  ProviderAuthError,
+  ProviderError,
+  ProviderNetworkError,
+} from "@/lib/ai/provider";
 import { gradeAssessment } from "@/lib/ai/grading";
 import { DocumentError, normalizeDocument } from "@/lib/document/normalize";
 import { transcribeDocument } from "@/lib/vision/transcribe";
@@ -70,11 +75,23 @@ class StageTracker {
     await this.flush();
   }
 
+  /**
+   * Progress detail is best-effort by nature: it is a nicety for the polling
+   * UI, and losing one update matters far less than losing the run. Callers
+   * fire this without awaiting, so a rejection here would surface as an
+   * unhandled rejection and take the process down with it.
+   */
   async detail(stage: PipelineStage, detail: string): Promise<void> {
     const entry = this.find(stage);
-    if (entry && entry.state === "active") {
-      entry.detail = detail;
+    if (!entry || entry.state !== "active") return;
+    entry.detail = detail;
+    try {
       await this.flush();
+    } catch (error) {
+      console.warn(
+        `[pipeline ${this.record.id}] could not persist progress detail:`,
+        error,
+      );
     }
   }
 
@@ -121,7 +138,8 @@ class StageTracker {
   }
 }
 
-function toJobError(error: unknown, stage: PipelineStage): JobError {
+/** Exported for tests: this classification decides what the teacher is told. */
+export function toJobError(error: unknown, stage: PipelineStage): JobError {
   if (error instanceof DocumentError) {
     return {
       code: error.code === "EMPTY_FILE" ? "EMPTY_DOCUMENT" : "INVALID_FILE",
@@ -142,7 +160,7 @@ function toJobError(error: unknown, stage: PipelineStage): JobError {
         retryable: true,
       };
     }
-    if (error.status === 401 || error.status === 403) {
+    if (error instanceof ProviderAuthError) {
       return {
         code: "PROVIDER_ERROR",
         message:
@@ -166,6 +184,14 @@ function toJobError(error: unknown, stage: PipelineStage): JobError {
         retryable: true,
       };
     }
+    if (error instanceof ProviderNetworkError) {
+      return {
+        code: "PROVIDER_ERROR",
+        message:
+          "The connection to the AI service dropped before processing finished. Please try again.",
+        retryable: true,
+      };
+    }
     return {
       code: "PROVIDER_ERROR",
       message: "The AI service could not be reached. Please try again in a moment.",
@@ -173,8 +199,18 @@ function toJobError(error: unknown, stage: PipelineStage): JobError {
     };
   }
 
+  // Anything that failed in transit is diagnosed before the stage-specific
+  // wording below. Telling a teacher their question paper is illegible when
+  // the real cause was a dropped connection sends them to fix the wrong thing.
   const message = error instanceof Error ? error.message : String(error);
-  const isProvider = /fetch|network|timeout|abort/i.test(message);
+  if (/\bfetch\b|network|timeout|timed out|abort|ECONN|ENOTFOUND|EAI_AGAIN/i.test(message)) {
+    return {
+      code: "PROVIDER_ERROR",
+      message:
+        "The connection to the AI service dropped before processing finished. Please try again.",
+      retryable: true,
+    };
+  }
 
   if (stage === "reading-question-paper" || stage === "detecting-questions") {
     return {
@@ -189,14 +225,6 @@ function toJobError(error: unknown, stage: PipelineStage): JobError {
       code: "ANSWER_EXTRACTION_FAILED",
       message:
         "Could not reliably read the answer sheet. Check that the scan is clear and try again.",
-      retryable: true,
-    };
-  }
-  if (isProvider) {
-    return {
-      code: "PROVIDER_ERROR",
-      message:
-        "The AI service could not be reached. Please try again in a moment.",
       retryable: true,
     };
   }
@@ -436,6 +464,17 @@ export async function runPipeline(params: {
     // Log the real cause server-side; the client only ever sees the sanitized
     // message built by toJobError, which never contains keys or stack traces.
     console.error(`[pipeline ${jobId}] failed during "${stage}":`, error);
-    await tracker.fail(toJobError(error, stage), stage);
+    try {
+      await tracker.fail(toJobError(error, stage), stage);
+    } catch (writeError) {
+      // If we cannot even record the failure the job would sit at "processing"
+      // forever and the client would poll against a job that will never move.
+      // Nothing is left to do but log it loudly; the client's stall detection
+      // is what rescues the user from here.
+      console.error(
+        `[pipeline ${jobId}] could not persist the failure state:`,
+        writeError,
+      );
+    }
   }
 }

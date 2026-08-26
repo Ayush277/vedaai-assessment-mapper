@@ -2,6 +2,7 @@ import "server-only";
 import {
   chunkRegions,
   fetchWithTimeout,
+  ProviderAuthError,
   ProviderError,
   RateLimitError,
   withRetry,
@@ -32,6 +33,19 @@ type Part =
 function parseRetryDelay(body: string): number | undefined {
   const match = body.match(/"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/);
   return match ? Number(match[1]) : undefined;
+}
+
+/**
+ * Gemini answers an invalid key with 400 INVALID_ARGUMENT, not 401, so the
+ * status has to be read together with the body to tell a bad key apart from a
+ * bad request.
+ */
+function isAuthFailure(status: number, body: string): boolean {
+  if (status === 401 || status === 403) return true;
+  if (status !== 400) return false;
+  return /api[ _-]?key not valid|api[ _-]?key.*invalid|invalid.*api[ _-]?key|API_KEY_INVALID|permission denied|unauthenticated/i.test(
+    body,
+  );
 }
 
 function parseRetryAfterHeader(response: Response): number | undefined {
@@ -76,6 +90,12 @@ async function generate(params: {
       throw new RateLimitError(
         `Gemini rate limit reached: ${detail.slice(0, 200)}`,
         parseRetryDelay(detail) ?? parseRetryAfterHeader(response),
+      );
+    }
+    if (isAuthFailure(response.status, detail)) {
+      throw new ProviderAuthError(
+        `Gemini rejected the credentials: ${detail.slice(0, 200)}`,
+        response.status,
       );
     }
     throw new ProviderError(

@@ -2,6 +2,7 @@ import "server-only";
 import {
   chunkRegions,
   fetchWithTimeout,
+  ProviderAuthError,
   ProviderError,
   RateLimitError,
   withRetry,
@@ -64,6 +65,16 @@ async function createMessage(params: {
       throw new RateLimitError(
         `Anthropic rate limit reached: ${detail.slice(0, 200)}`,
         Number.isFinite(seconds) ? seconds : undefined,
+      );
+    }
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      /authentication_error|invalid x-api-key|invalid api key/i.test(detail)
+    ) {
+      throw new ProviderAuthError(
+        `Anthropic rejected the credentials: ${detail.slice(0, 200)}`,
+        response.status,
       );
     }
     throw new ProviderError(

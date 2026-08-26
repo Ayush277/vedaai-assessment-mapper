@@ -128,7 +128,7 @@ Open http://localhost:3000.
 
 ```bash
 npm run build      # production build
-npm test           # 80+ unit tests
+npm test           # 110 unit tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 ```
@@ -236,7 +236,7 @@ during that run — which is itself a real state the app handles.
 npm test
 ```
 
-80+ tests over the logic that decides correctness, not the pixels:
+110 tests over the logic that decides correctness, not the pixels:
 
 - **Label normalisation** — `11(a)`, `11 (a)`, `Q11(a)`, `Question 11(a)`, `11-a`
   all collapse to one form; `11` stays distinct from `11a`; OCR digit confusions
@@ -256,6 +256,10 @@ npm test
   removed while writing above them survives, blocks split on real paragraph gaps.
 - **Provider parsing** — JSON recovered from fenced, prefixed and brace-containing
   model output; confidences clamped whether given as `0.85` or `85`.
+- **Error handling** — permanent failures stop retrying immediately while transient
+  ones back off; timeouts and dropped connections become typed provider errors;
+  a rejected key is reported as a key problem even though Gemini returns it as a
+  400; and no provider body or stack trace ever reaches the client.
 
 ### End-to-end verification
 
@@ -318,7 +322,7 @@ src/
     mapping/     normalize-label, deterministic, semantic, mapper
     processing/  pipeline, job-store, stages
     types/       assessment.ts — the whole domain model
-  test/          80+ tests
+  test/          110 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   capture-demo.ts                freezes a real run into the demo dataset

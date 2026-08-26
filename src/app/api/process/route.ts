@@ -61,19 +61,26 @@ export async function POST(request: Request) {
   // background. `after()` keeps the work alive on serverless platforms that
   // would otherwise freeze the instance once the response is flushed.
   after(async () => {
-    await runPipeline({
-      jobId: job.id,
-      questionPaper: {
-        fileName: questionPaper.name,
-        mimeType: questionPaper.type,
-        bytes: new Uint8Array(paperBytes),
-      },
-      answerSheet: {
-        fileName: answerSheet.name,
-        mimeType: answerSheet.type,
-        bytes: new Uint8Array(sheetBytes),
-      },
-    });
+    try {
+      await runPipeline({
+        jobId: job.id,
+        questionPaper: {
+          fileName: questionPaper.name,
+          mimeType: questionPaper.type,
+          bytes: new Uint8Array(paperBytes),
+        },
+        answerSheet: {
+          fileName: answerSheet.name,
+          mimeType: answerSheet.type,
+          bytes: new Uint8Array(sheetBytes),
+        },
+      });
+    } catch (error) {
+      // runPipeline records its own failures, so reaching here means even that
+      // bookkeeping failed. Swallow it: an unhandled rejection in a background
+      // task would take the whole server down instead of one job.
+      console.error(`[api/process] background run ${job.id} threw:`, error);
+    }
   });
 
   return NextResponse.json({ jobId: job.id }, { status: 202 });
