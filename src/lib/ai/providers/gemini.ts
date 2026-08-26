@@ -233,9 +233,12 @@ function createReasoning(apiKey: string, model: string): ReasoningProvider {
           { attempts: 2 },
         );
         return extractJson(raw);
-      } catch {
+      } catch (error) {
         // Reasoning is always an enhancement over deterministic logic that has
         // already run, so a failure here degrades quality but never the run.
+        // It must still be logged: a silently skipped step is indistinguishable
+        // from one that was never configured, which makes it unexplainable.
+        console.warn("[gemini] reasoning call failed, continuing without it:", error);
         return null;
       }
     },
@@ -270,14 +273,28 @@ function createEmbeddings(apiKey: string, model: string): EmbeddingProvider {
           { attempts: 2 },
         );
 
-        if (!response.ok) return null;
+        if (!response.ok) {
+          console.warn(
+            `[gemini] embeddings unavailable (${response.status}); falling back to lexical similarity.`,
+          );
+          return null;
+        }
         const payload = (await response.json()) as {
           embeddings?: { values?: number[] }[];
         };
         const vectors = payload.embeddings?.map((entry) => entry.values ?? []);
-        if (!vectors || vectors.length !== texts.length) return null;
+        if (!vectors || vectors.length !== texts.length) {
+          console.warn(
+            "[gemini] embeddings response did not match the request; falling back to lexical similarity.",
+          );
+          return null;
+        }
         return vectors;
-      } catch {
+      } catch (error) {
+        console.warn(
+          "[gemini] embeddings call failed; falling back to lexical similarity:",
+          error,
+        );
         return null;
       }
     },

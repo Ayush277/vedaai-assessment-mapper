@@ -422,7 +422,8 @@ export async function runPipeline(params: {
           mappings: mappingResult.mappings,
           reasoning: providers.reasoning,
         });
-      } catch {
+      } catch (error) {
+        console.warn(`[pipeline ${jobId}] grading failed:`, error);
         grading = null;
       }
       if (grading) {
@@ -432,6 +433,13 @@ export async function runPipeline(params: {
         );
       } else {
         await tracker.skip(stage, "Grading unavailable for this run");
+        // The results screen would otherwise just be missing its scores with
+        // no explanation, which reads as a bug rather than a degraded run.
+        warnings.push(
+          providers.reasoning
+            ? "AI grading was unavailable for this run, so no marks were awarded. Extraction and mapping are unaffected."
+            : "AI grading needs a configured AI provider, so no marks were awarded.",
+        );
       }
     }
 

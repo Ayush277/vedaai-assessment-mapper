@@ -217,7 +217,11 @@ function createReasoning(apiKey: string, model: string): ReasoningProvider {
           { attempts: 2 },
         );
         return extractJson(raw);
-      } catch {
+      } catch (error) {
+        console.warn(
+          "[anthropic] reasoning call failed, continuing without it:",
+          error,
+        );
         return null;
       }
     },
