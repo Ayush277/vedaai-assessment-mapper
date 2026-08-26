@@ -110,6 +110,43 @@
   }
 }
 
+@keyframes veda-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes veda-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes veda-stage-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes veda-highlight-in {
+  from {
+    box-shadow: 0 0 0 0 rgb(34 197 94 / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 10px rgb(34 197 94 / 0);
+  }
+}
+
 @keyframes veda-sheen {
   from {
     transform: translateX(-100%);
@@ -121,6 +158,27 @@
 
 .animate-veda-pulse {
   animation: veda-pulse 1.6s ease-in-out infinite;
+}
+
+/* Results arriving after extraction: one short rise, not a cascade. */
+.animate-veda-fade-up {
+  animation: veda-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* A ring that keeps turning while the pipeline works, so the extraction screen
+   reads as "busy" even during the long silent stretches of a provider call. */
+.animate-veda-orbit {
+  animation: veda-orbit 2.6s linear infinite;
+}
+
+.animate-veda-stage-in {
+  animation: veda-stage-in 0.3s ease-out both;
+}
+
+/* A single soft pulse when a highlight becomes the selected one, so the eye
+   is drawn to it after an automatic scroll without anything blinking. */
+.animate-veda-highlight-in {
+  animation: veda-highlight-in 0.9s ease-out 1;
 }
 
 .animate-veda-sheen::after {
@@ -139,6 +197,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-veda-pulse,
+  .animate-veda-highlight-in,
+  .animate-veda-fade-up,
+  .animate-veda-orbit,
+  .animate-veda-stage-in,
   .animate-veda-sheen::after {
     animation: none;
   }

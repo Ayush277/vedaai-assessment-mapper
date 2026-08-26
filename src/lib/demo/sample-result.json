@@ -683,6 +683,7 @@
   "warnings": [
     "This is a saved sample run, not a live extraction."
   ],
+  "degradations": [],
   "provider": {
     "id": "gemini",
     "model": "gemini-flash-latest",

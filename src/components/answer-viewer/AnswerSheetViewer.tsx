@@ -1,50 +1,77 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
 import {
-  ChevronLeft,
-  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Crosshair,
   Maximize2,
   Minus,
   Plus,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { DocumentPage } from "@/lib/types/assessment";
 import { HighlightOverlay, type Highlight } from "./HighlightOverlay";
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3] as const;
 const FIT = 1;
+/** Where a scrolled-to region lands vertically: a third down reads best. */
+const FOCUS_OFFSET_RATIO = 0.32;
 
-export function AnswerSheetViewer({
-  pages,
-  highlights,
-  page,
-  onPageChange,
-  /** Bumped by the parent whenever a new question is selected. */
-  focusToken,
-  emptyMessage,
-}: {
-  pages: DocumentPage[];
-  highlights: Highlight[];
-  page: number;
-  onPageChange: (page: number) => void;
-  focusToken?: string;
-  emptyMessage?: string;
-}) {
+/**
+ * Continuous-scroll answer sheet.
+ *
+ * Every page is rendered stacked in one scroll container rather than swapped in
+ * and out, so the teacher scrolls the booklet the way they would flip a real
+ * one — and an answer that runs across a page break is visible in one motion.
+ * Page numbers are still shown, but as a position readout rather than the only
+ * way to move.
+ */
+export type AnswerSheetViewerHandle = {
+  /** Bring a normalized position on a page into view. */
+  focusRegion: (pageNumber: number, y: number) => void;
+};
+
+export const AnswerSheetViewer = forwardRef<
+  AnswerSheetViewerHandle,
+  {
+    pages: DocumentPage[];
+    highlights: Highlight[];
+    onVisiblePageChange?: (pageNumber: number) => void;
+    emptyMessage?: string;
+  }
+>(function AnswerSheetViewer(
+  { pages, highlights, onVisiblePageChange, emptyMessage },
+  ref,
+) {
   const [zoom, setZoom] = useState<number>(FIT);
+  const [visiblePage, setVisiblePage] = useState(pages[0]?.pageNumber ?? 1);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const stageRef = useRef<HTMLDivElement>(null);
 
-  const current = useMemo(
-    () => pages.find((entry) => entry.pageNumber === page) ?? pages[0],
-    [pages, page],
+  const pageElement = useCallback(
+    (pageNumber: number) =>
+      scrollRef.current?.querySelector<HTMLElement>(`[data-page="${pageNumber}"]`) ??
+      null,
+    [],
   );
 
-  const pageHighlights = useMemo(
-    () => highlights.filter((highlight) => highlight.pageNumber === current?.pageNumber),
-    [highlights, current],
-  );
+  const highlightsByPage = useMemo(() => {
+    const map = new Map<number, Highlight[]>();
+    for (const highlight of highlights) {
+      const bucket = map.get(highlight.pageNumber);
+      if (bucket) bucket.push(highlight);
+      else map.set(highlight.pageNumber, [highlight]);
+    }
+    return map;
+  }, [highlights]);
 
   const changeZoom = useCallback((direction: 1 | -1) => {
     setZoom((value) => {
@@ -57,32 +84,97 @@ export function AnswerSheetViewer({
     });
   }, []);
 
-  // Bring the selected answer into view. Runs on selection rather than on every
-  // highlight change so the teacher's own scrolling is never hijacked.
+  /** Scroll a normalized position on a given page into view. */
+  const scrollToPosition = useCallback(
+    (pageNumber: number, y: number, behavior: ScrollBehavior = "smooth") => {
+      const container = scrollRef.current;
+      const element = pageElement(pageNumber);
+      if (!container || !element) return;
+
+      // Measured from rects rather than offsetTop: any transform on an
+      // ancestor (the results panel animates in on mount) changes what
+      // offsetParent resolves to, which silently shifts offsetTop onto a
+      // different origin. Rect deltas are always relative to the viewport, so
+      // this stays correct wherever the container sits.
+      const containerBox = container.getBoundingClientRect();
+      const pageBox = element.getBoundingClientRect();
+      const top =
+        container.scrollTop +
+        (pageBox.top - containerBox.top) +
+        y * pageBox.height -
+        container.clientHeight * FOCUS_OFFSET_RATIO;
+
+      container.scrollTo({ top: Math.max(0, top), behavior });
+    },
+    [pageElement],
+  );
+
+  /**
+   * Scrolling is driven imperatively by the click handler rather than by a
+   * derived-state effect. Selecting the question that is already selected
+   * produces an identical target, so an effect keyed on that target would not
+   * re-run and the sheet would sit still — which is exactly what a teacher
+   * clicking the same question again is asking it not to do.
+   */
+  useImperativeHandle(
+    ref,
+    () => ({
+      focusRegion: (pageNumber: number, y: number) => {
+        requestAnimationFrame(() => scrollToPosition(pageNumber, y));
+        // A late reflow — a font swapping in, a page image decoding — can move
+        // the target after the first scroll is already under way. One quiet
+        // correction afterwards costs nothing and removes that whole class of
+        // "it scrolled to almost the right place" bug.
+        window.setTimeout(() => scrollToPosition(pageNumber, y), 320);
+      },
+    }),
+    [scrollToPosition],
+  );
+
+  // Report which page is under the reading line, for the position readout.
   useEffect(() => {
-    if (!focusToken) return;
     const container = scrollRef.current;
-    const stage = stageRef.current;
-    if (!container || !stage) return;
+    if (!container) return;
 
-    const target = pageHighlights.find((highlight) => highlight.tone !== "muted");
-    if (!target) {
-      container.scrollTo({ top: 0, behavior: "smooth" });
-      return;
-    }
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const containerBox = container.getBoundingClientRect();
+        const line = containerBox.top + containerBox.height * 0.3;
+        let current = pages[0]?.pageNumber ?? 1;
+        for (const page of pages) {
+          const element = pageElement(page.pageNumber);
+          if (element && element.getBoundingClientRect().top <= line) {
+            current = page.pageNumber;
+          }
+        }
+        setVisiblePage((previous) => {
+          if (previous !== current) onVisiblePageChange?.(current);
+          return current;
+        });
+      });
+    };
 
-    const stageHeight = stage.getBoundingClientRect().height;
-    const centre = (target.bbox.y + target.bbox.height / 2) * stageHeight;
-    container.scrollTo({
-      top: Math.max(0, centre - container.clientHeight / 2),
-      behavior: "smooth",
-    });
-    // pageHighlights is derived from focusToken's effects; re-running on it
-    // directly would fight the user's scrolling.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusToken, current?.pageNumber]);
+    container.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      container.removeEventListener("scroll", onScroll);
+    };
+  }, [pages, onVisiblePageChange, pageElement]);
 
-  if (!current) {
+  const jumpPage = useCallback(
+    (direction: 1 | -1) => {
+      const index = pages.findIndex((page) => page.pageNumber === visiblePage);
+      const next = pages[Math.min(pages.length - 1, Math.max(0, index + direction))];
+      if (next) scrollToPosition(next.pageNumber, 0);
+    },
+    [pages, visiblePage, scrollToPosition],
+  );
+
+  const activeHighlight = highlights.find((h) => h.tone !== "muted");
+
+  if (pages.length === 0) {
     return (
       <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted">
         {emptyMessage ?? "No answer sheet pages are available."}
@@ -95,6 +187,19 @@ export function AnswerSheetViewer({
       <div className="flex flex-wrap items-center gap-2 px-4 py-3 sm:px-5">
         <h2 className="mr-auto text-[15px] font-semibold text-ink">Answer Sheet</h2>
 
+        {activeHighlight ? (
+          <button
+            type="button"
+            onClick={() =>
+              scrollToPosition(activeHighlight.pageNumber, activeHighlight.bbox.y)
+            }
+            className="inline-flex items-center gap-1.5 rounded-full border border-highlight/40 bg-highlight/10 px-2.5 py-1 text-[11px] font-semibold text-success-ink transition-colors hover:bg-highlight/20"
+          >
+            <Crosshair className="size-3.5" strokeWidth={2.2} />
+            Jump to answer
+          </button>
+        ) : null}
+
         <div className="flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5">
           <button
             type="button"
@@ -105,7 +210,7 @@ export function AnswerSheetViewer({
           >
             <Minus className="size-3.5" />
           </button>
-          <span className="min-w-[52px] text-center text-xs font-semibold tabular-nums">
+          <span className="min-w-[46px] text-center text-xs font-semibold tabular-nums">
             {Math.round(zoom * 100)}%
           </span>
           <button
@@ -120,101 +225,79 @@ export function AnswerSheetViewer({
           <button
             type="button"
             onClick={() => setZoom(FIT)}
-            aria-label="Fit to page"
-            title="Fit to page"
+            aria-label="Fit to width"
+            title="Fit to width"
             className="grid size-7 place-items-center rounded-full text-ink-soft transition-colors hover:bg-panel"
           >
             <Maximize2 className="size-3.5" />
           </button>
         </div>
 
+        {/* Position readout — the sheet scrolls continuously; these only nudge. */}
         <div className="flex items-center gap-0.5 rounded-full border border-line bg-surface p-0.5">
           <button
             type="button"
-            onClick={() => onPageChange(Math.max(1, current.pageNumber - 1))}
-            disabled={current.pageNumber <= pages[0].pageNumber}
-            aria-label="Previous page"
+            onClick={() => jumpPage(-1)}
+            disabled={visiblePage <= pages[0].pageNumber}
+            aria-label="Scroll to previous page"
             className="grid size-7 place-items-center rounded-full text-ink-soft transition-colors hover:bg-panel disabled:text-line-strong"
           >
-            <ChevronLeft className="size-4" />
+            <ChevronUp className="size-4" />
           </button>
           <span className="px-1.5 text-xs font-semibold whitespace-nowrap tabular-nums">
-            Page {current.pageNumber} of {pages[pages.length - 1].pageNumber}
+            Page {visiblePage} / {pages[pages.length - 1].pageNumber}
           </span>
           <button
             type="button"
-            onClick={() =>
-              onPageChange(
-                Math.min(pages[pages.length - 1].pageNumber, current.pageNumber + 1),
-              )
-            }
-            disabled={current.pageNumber >= pages[pages.length - 1].pageNumber}
-            aria-label="Next page"
+            onClick={() => jumpPage(1)}
+            disabled={visiblePage >= pages[pages.length - 1].pageNumber}
+            aria-label="Scroll to next page"
             className="grid size-7 place-items-center rounded-full text-ink-soft transition-colors hover:bg-panel disabled:text-line-strong"
           >
-            <ChevronRight className="size-4" />
+            <ChevronDown className="size-4" />
           </button>
         </div>
       </div>
 
       <div
         ref={scrollRef}
-        className="scrollbar-slim min-h-0 flex-1 overflow-auto px-4 pb-4 sm:px-5"
+        tabIndex={0}
+        aria-label="Answer sheet, scrollable"
+        className="scrollbar-slim relative min-h-0 flex-1 overflow-y-auto scroll-smooth bg-panel px-4 pb-4 sm:px-5"
       >
         <div
-          ref={stageRef}
-          className="relative mx-auto overflow-hidden rounded-xl border border-line bg-surface shadow-sm"
-          style={{
-            width: `${zoom * 100}%`,
-            maxWidth: zoom <= FIT ? "100%" : "none",
-          }}
+          className="mx-auto flex flex-col gap-3"
+          style={{ width: `${zoom * 100}%`, maxWidth: zoom <= FIT ? "100%" : "none" }}
         >
-          <Image
-            key={current.imageUrl}
-            src={current.imageUrl}
-            alt={`Answer sheet page ${current.pageNumber}`}
-            width={current.width}
-            height={current.height}
-            unoptimized
-            priority
-            className="block h-auto w-full select-none"
-          />
-          {pageHighlights.map((highlight) => (
-            <HighlightOverlay key={highlight.id} highlight={highlight} />
+          {pages.map((page) => (
+            <div
+              key={page.pageNumber}
+              data-page={page.pageNumber}
+              style={{ aspectRatio: `${page.width} / ${page.height}` }}
+              className="relative overflow-hidden rounded-xl border border-line bg-surface shadow-sm"
+            >
+              <Image
+                src={page.imageUrl}
+                alt={`Answer sheet page ${page.pageNumber}`}
+                width={page.width}
+                height={page.height}
+                unoptimized
+                priority={page.pageNumber <= 2}
+                loading={page.pageNumber <= 2 ? undefined : "lazy"}
+                className="block h-auto w-full select-none"
+              />
+
+              {(highlightsByPage.get(page.pageNumber) ?? []).map((highlight) => (
+                <HighlightOverlay key={highlight.id} highlight={highlight} />
+              ))}
+
+              <span className="pointer-events-none absolute right-2 bottom-2 rounded-full bg-ink/70 px-2 py-0.5 text-[10px] font-semibold text-white tabular-nums">
+                {page.pageNumber}
+              </span>
+            </div>
           ))}
         </div>
       </div>
-
-      {pages.length > 1 ? (
-        <div className="scrollbar-slim flex shrink-0 items-center gap-1.5 overflow-x-auto border-t border-line px-4 py-2 sm:px-5">
-          {pages.map((entry) => {
-            const hasHighlight = highlights.some(
-              (highlight) =>
-                highlight.pageNumber === entry.pageNumber && highlight.tone !== "muted",
-            );
-            const isCurrent = entry.pageNumber === current.pageNumber;
-            return (
-              <button
-                key={entry.pageNumber}
-                type="button"
-                onClick={() => onPageChange(entry.pageNumber)}
-                aria-current={isCurrent ? "true" : undefined}
-                className={cn(
-                  "relative h-7 min-w-7 shrink-0 rounded-lg px-2 text-xs font-semibold transition-colors",
-                  isCurrent
-                    ? "bg-ink text-white"
-                    : "border border-line bg-surface text-ink-soft hover:border-line-strong",
-                )}
-              >
-                {entry.pageNumber}
-                {hasHighlight && !isCurrent ? (
-                  <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-highlight" />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
     </div>
   );
-}
+});

@@ -6,23 +6,24 @@ import { cn } from "@/lib/utils";
 import type { QuestionRow } from "@/lib/view-model";
 import { confidenceLabel } from "@/lib/view-model";
 import { StatusPill } from "./StatusPill";
+import { EvaluationBadge } from "./EvaluationBadge";
 
 export function QuestionCard({
   row,
-  index,
   selected,
   expanded,
   onSelect,
   onToggleExpand,
 }: {
   row: QuestionRow;
-  index: number;
   selected: boolean;
   expanded: boolean;
   onSelect: () => void;
   onToggleExpand: () => void;
 }) {
   const { question, mapping, answer, grade, pages, isMultiPage } = row;
+  const needsReview = mapping.status === "needs_review" || grade?.requiresReview;
+
   const scoreTone =
     grade === undefined
       ? "neutral"
@@ -33,13 +34,13 @@ export function QuestionCard({
           : "warn";
 
   return (
-    <li>
+    <li id={`question-card-${question.id}`} className="scroll-mt-2">
       <div
         className={cn(
-          "rounded-card border bg-surface transition-colors",
+          "rounded-card border bg-surface transition-all duration-200",
           selected
             ? "border-brand shadow-[0_0_0_1px_var(--color-brand)]"
-            : "border-line hover:border-line-strong",
+            : "border-line hover:border-line-strong hover:shadow-sm",
         )}
       >
         <div className="flex items-start gap-3 p-3">
@@ -47,6 +48,7 @@ export function QuestionCard({
             type="button"
             onClick={onSelect}
             aria-pressed={selected}
+            aria-label={`Show the answer to question ${question.label.replace(/[.:]$/, "")} on the answer sheet`}
             className="flex min-w-0 flex-1 items-start gap-3 text-left"
           >
             <span
@@ -55,7 +57,7 @@ export function QuestionCard({
                 selected ? "bg-brand text-white" : "bg-panel text-ink",
               )}
             >
-              {index + 1}
+              {question.order + 1}
             </span>
 
             <span className="min-w-0 flex-1">
@@ -80,12 +82,15 @@ export function QuestionCard({
                   </Badge>
                 ) : null}
               </span>
+
               <span className="mt-1 block text-[13px] leading-relaxed text-ink-soft">
                 {question.text}
               </span>
+
               <span className="mt-2 flex flex-wrap items-center gap-1.5">
                 <StatusPill status={mapping.status} />
-                {mapping.status === "needs_review" ? (
+                {grade ? <EvaluationBadge verdict={grade.evaluation} /> : null}
+                {needsReview && !grade ? (
                   <span className="text-[11px] font-medium text-muted">
                     {confidenceLabel(mapping.confidence)} confident
                   </span>
@@ -96,7 +101,7 @@ export function QuestionCard({
 
           <span className="flex shrink-0 items-center gap-1.5">
             {grade ? (
-              <Badge tone={scoreTone}>
+              <Badge tone={scoreTone} aria-label={`${grade.marksObtained} out of ${grade.maxMarks} marks`}>
                 {grade.marksObtained}/{grade.maxMarks}
               </Badge>
             ) : null}
@@ -104,6 +109,7 @@ export function QuestionCard({
               type="button"
               onClick={onToggleExpand}
               aria-expanded={expanded}
+              aria-controls={`question-detail-${question.id}`}
               aria-label={expanded ? "Hide details" : "Show details"}
               className="grid size-7 place-items-center rounded-full text-muted transition-colors hover:bg-panel hover:text-ink"
             >
@@ -115,14 +121,17 @@ export function QuestionCard({
         </div>
 
         {expanded ? (
-          <div className="space-y-2.5 border-t border-line px-3 pt-3 pb-3">
+          <div
+            id={`question-detail-${question.id}`}
+            className="space-y-2.5 border-t border-line px-3 pt-3 pb-3"
+          >
             {answer ? (
               <div className="rounded-xl bg-panel p-3">
                 <p className="mb-1 text-[11px] font-semibold tracking-wide text-muted uppercase">
                   Student&apos;s answer
                   {answer.recognizedLabel ? ` · written as "${answer.recognizedLabel}"` : ""}
                 </p>
-                <p className="text-[13px] leading-relaxed whitespace-pre-line text-ink-soft">
+                <p className="max-h-56 overflow-y-auto text-[13px] leading-relaxed whitespace-pre-line text-ink-soft">
                   {answer.text || "The handwriting in this region could not be read."}
                 </p>
                 {answer.appearsIncomplete ? (
@@ -140,18 +149,22 @@ export function QuestionCard({
               </div>
             )}
 
-            {grade?.feedback ? (
+            {grade ? (
               <div className="rounded-xl border border-brand/20 bg-brand-soft/50 p-3">
-                <p className="mb-1 flex items-center gap-1.5 text-[12px] font-bold text-ink">
-                  <Sparkles className="size-3.5 text-brand" />
+                <p className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[12px] font-bold text-ink">
+                  <Sparkles className="size-3.5 text-brand" strokeWidth={2.2} />
                   AI Feedback
+                  <EvaluationBadge verdict={grade.evaluation} />
+                  <span className="ml-auto text-[11px] font-semibold text-ink-soft tabular-nums">
+                    {grade.marksObtained}/{grade.maxMarks} marks
+                  </span>
                 </p>
                 <p className="text-[12px] leading-relaxed text-ink-soft">
                   {grade.feedback}
                 </p>
                 {grade.requiresReview ? (
                   <p className="mt-1.5 text-[11px] font-medium text-warn">
-                    Low confidence — please verify this evaluation.
+                    Low confidence — please verify this evaluation before recording it.
                   </p>
                 ) : null}
               </div>

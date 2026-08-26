@@ -14,24 +14,34 @@ export type Highlight = {
   label?: string;
   /** Rendered under the tag when the region is part of a multi-page answer. */
   note?: string;
+  /** Selecting this region selects the question it belongs to. */
+  onSelect?: () => void;
+  /** Announced to screen readers and shown as a tooltip. */
+  title?: string;
 };
 
-const TONES: Record<HighlightTone, { box: string; tag: string }> = {
+const TONES: Record<HighlightTone, { box: string; tag: string; hover: string }> = {
   active: {
     box: "border-highlight bg-highlight-fill",
     tag: "bg-highlight text-white",
+    hover: "hover:bg-highlight/25",
   },
   review: {
     box: "border-highlight-review bg-highlight-review-fill",
     tag: "bg-highlight-review text-white",
+    hover: "hover:bg-highlight-review/25",
   },
   unmatched: {
     box: "border-brand bg-brand/15",
     tag: "bg-brand text-white",
+    hover: "hover:bg-brand/25",
   },
+  // Every other detected answer: present but quiet, so the teacher can see
+  // where the rest of the answers are and click straight to one.
   muted: {
-    box: "border-highlight/50 bg-highlight-fill/40 border-dashed",
-    tag: "bg-highlight/70 text-white",
+    box: "border-dashed border-line-strong/70 bg-transparent",
+    tag: "bg-ink/60 text-white",
+    hover: "hover:border-highlight hover:bg-highlight-fill/60",
   },
 };
 
@@ -42,22 +52,18 @@ const TONES: Record<HighlightTone, { box: string; tag: string }> = {
  */
 export function HighlightOverlay({ highlight }: { highlight: Highlight }) {
   const tone = TONES[highlight.tone];
-  const { bbox } = highlight;
+  const { bbox, onSelect } = highlight;
+  const interactive = Boolean(onSelect);
 
-  return (
-    <div
-      aria-hidden
-      className={cn(
-        "pointer-events-none absolute rounded-[6px] border-2 transition-[opacity] duration-200",
-        tone.box,
-      )}
-      style={{
-        left: `${bbox.x * 100}%`,
-        top: `${bbox.y * 100}%`,
-        width: `${bbox.width * 100}%`,
-        height: `${bbox.height * 100}%`,
-      }}
-    >
+  const style = {
+    left: `${bbox.x * 100}%`,
+    top: `${bbox.y * 100}%`,
+    width: `${bbox.width * 100}%`,
+    height: `${bbox.height * 100}%`,
+  } as const;
+
+  const body = (
+    <>
       {highlight.label ? (
         <span
           className={cn(
@@ -80,6 +86,33 @@ export function HighlightOverlay({ highlight }: { highlight: Highlight }) {
           {highlight.note}
         </span>
       ) : null}
-    </div>
+    </>
+  );
+
+  const shared = cn(
+    "absolute rounded-[6px] border-2 transition-all duration-200",
+    tone.box,
+    highlight.tone === "active" && "animate-veda-highlight-in",
+  );
+
+  if (!interactive) {
+    return (
+      <div aria-hidden className={cn(shared, "pointer-events-none")} style={style}>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      title={highlight.title}
+      aria-label={highlight.title ?? "Select this answer"}
+      className={cn(shared, tone.hover, "cursor-pointer text-left")}
+      style={style}
+    >
+      {body}
+    </button>
   );
 }

@@ -1,7 +1,11 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { ArrowLeft, Bell, ClipboardList, HelpCircle, Sparkles } from "lucide-react";
+import { UnavailableButton } from "./UnavailableButton";
+
+const ICON = "size-[18px]";
 
 export function TopBar({
   breadcrumb = "Exams",
@@ -16,51 +20,58 @@ export function TopBar({
         <Link
           href={backHref}
           aria-label="Back to upload"
-          className="grid size-9 place-items-center rounded-full text-ink-soft transition-colors hover:bg-panel hover:text-ink"
+          className="grid size-9 shrink-0 place-items-center rounded-full text-ink-soft transition-colors hover:bg-panel hover:text-ink"
         >
-          <ArrowLeft className="size-[18px]" />
+          <ArrowLeft className={ICON} strokeWidth={1.8} />
         </Link>
       ) : (
-        <span className="grid size-9 place-items-center rounded-full text-line-strong">
-          <ArrowLeft className="size-[18px]" />
+        <span
+          aria-hidden
+          className="grid size-9 shrink-0 place-items-center rounded-full text-line-strong"
+        >
+          <ArrowLeft className={ICON} strokeWidth={1.8} />
         </span>
       )}
 
-      <span className="flex items-center gap-2 rounded-full px-2 py-1 text-sm font-medium text-ink">
-        <ClipboardList className="size-4 text-muted" strokeWidth={1.8} />
-        {breadcrumb}
+      <span className="flex min-w-0 items-center gap-2 rounded-full px-2 py-1 text-sm font-medium text-ink">
+        <ClipboardList className="size-4 shrink-0 text-muted" strokeWidth={1.8} />
+        <span className="truncate">{breadcrumb}</span>
       </span>
 
-      <div className="ml-auto flex items-center gap-1">
-        <button
-          type="button"
-          aria-label="Help"
-          className="grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-panel hover:text-ink"
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        <UnavailableButton
+          label="Help centre"
+          className="grid size-9 place-items-center rounded-full text-muted"
         >
-          <HelpCircle className="size-[18px]" strokeWidth={1.8} />
-        </button>
-        <button
-          type="button"
-          aria-label="Notifications"
-          className="relative grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-panel hover:text-ink"
+          <HelpCircle className={ICON} strokeWidth={1.8} />
+        </UnavailableButton>
+
+        <UnavailableButton
+          label="Notifications"
+          className="grid size-9 place-items-center rounded-full text-muted"
         >
-          <Bell className="size-[18px]" strokeWidth={1.8} />
+          <Bell className={ICON} strokeWidth={1.8} />
           <span className="absolute top-2 right-2.5 size-1.5 rounded-full bg-brand" />
-        </button>
-        <button
-          type="button"
-          aria-label="AI assistant"
-          className="grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-panel hover:text-ink"
+        </UnavailableButton>
+
+        <UnavailableButton
+          label="AI assistant"
+          className="grid size-9 place-items-center rounded-full text-muted"
         >
-          <Sparkles className="size-[18px]" strokeWidth={1.8} />
-        </button>
+          <Sparkles className={ICON} strokeWidth={1.8} />
+        </UnavailableButton>
 
         <span className="ml-1 flex items-center gap-2 rounded-full py-1 pr-2 pl-1">
-          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-brand-soft text-[12px] font-semibold text-brand">
-            MR
-          </span>
-          <span className="hidden text-sm font-medium text-ink sm:inline">
-            Madhur Rastogi
+          <Image
+            src="/avatar/ayush.svg"
+            alt=""
+            width={32}
+            height={32}
+            priority
+            className="size-8 shrink-0 rounded-full ring-2 ring-brand-soft"
+          />
+          <span className="hidden text-sm font-medium whitespace-nowrap text-ink sm:inline">
+            Ayush Kumar
           </span>
         </span>
       </div>
