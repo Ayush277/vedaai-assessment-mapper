@@ -1,5 +1,5 @@
 import type { Answer, Question } from "@/lib/types/assessment";
-import { labelSortKey, parseLabel } from "./normalize-label";
+import { parseLabel } from "./normalize-label";
 
 /**
  * Deterministic matching. Everything here is explainable without reference to
@@ -239,13 +239,4 @@ export function runDeterministicMatching(
     matches: [...explicit.matches, ...fuzzy, ...structural],
     strayLabelledAnswerIds: explicit.stray.filter((id) => !matchedAnswers.has(id)),
   };
-}
-
-/** Questions sorted by printed label; used only for diagnostics and tests. */
-export function sortQuestionsByLabel(questions: Question[]): Question[] {
-  return [...questions].sort((a, b) => {
-    const [aNum, aSub] = labelSortKey(a.normalizedLabel);
-    const [bNum, bSub] = labelSortKey(b.normalizedLabel);
-    return aNum === bNum ? aSub.localeCompare(bSub) : aNum - bNum;
-  });
 }
