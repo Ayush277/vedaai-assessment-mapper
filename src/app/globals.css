@@ -1,0 +1,145 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Design tokens taken from the VedaAI Figma:
+   warm orange brand, near-black ink, soft grey chrome, green for correctness.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-brand: #ff5a26;
+  --color-brand-hover: #ec4a18;
+  --color-brand-soft: #ffece4;
+  --color-brand-ring: #ffd0bd;
+
+  --color-ink: #16181d;
+  --color-ink-soft: #4b5058;
+  --color-muted: #7c828c;
+
+  --color-canvas: #ececee;
+  --color-panel: #f7f7f8;
+  --color-surface: #ffffff;
+  --color-line: #e7e7ea;
+  --color-line-strong: #d6d6db;
+
+  --color-success: #0f9d4f;
+  --color-success-soft: #e6f7ed;
+  --color-success-ink: #0b6b37;
+
+  --color-danger: #dc3b3b;
+  --color-danger-soft: #fdeaea;
+  --color-danger-ink: #9c2626;
+
+  --color-warn: #c2760a;
+  --color-warn-soft: #fdf1e0;
+
+  /* Answer highlight — green overlay so handwriting stays readable through it */
+  --color-highlight: #22c55e;
+  --color-highlight-fill: rgb(34 197 94 / 0.18);
+  --color-highlight-review: #e0a107;
+  --color-highlight-review-fill: rgb(224 161 7 / 0.18);
+
+  --radius-card: 16px;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A visible, consistent focus ring everywhere — keyboard users get the same
+     affordances as mouse users. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: var(--color-brand-soft);
+  }
+}
+
+@layer utilities {
+  .scrollbar-slim {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background-color: var(--color-line-strong);
+    border-radius: 999px;
+  }
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Hero underline behind "Question Paper & Answer Sheets" in the Figma. */
+.brand-underline {
+  background-image: linear-gradient(
+    to top,
+    var(--color-brand-soft) 0,
+    var(--color-brand-soft) 38%,
+    transparent 38%
+  );
+  padding-inline: 0.15em;
+  border-radius: 4px;
+}
+
+@keyframes veda-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes veda-sheen {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(300%);
+  }
+}
+
+.animate-veda-pulse {
+  animation: veda-pulse 1.6s ease-in-out infinite;
+}
+
+.animate-veda-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 33%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.55),
+    transparent
+  );
+  animation: veda-sheen 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-veda-pulse,
+  .animate-veda-sheen::after {
+    animation: none;
+  }
+}
