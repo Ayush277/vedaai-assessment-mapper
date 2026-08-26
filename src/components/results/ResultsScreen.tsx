@@ -264,21 +264,24 @@ export function ResultsScreen({ result }: { result: AssessmentResult }) {
           </details>
         ) : null}
 
-        <div className="sticky top-0 z-10 -mx-1 flex flex-wrap items-center gap-2 bg-panel px-1 py-2">
-          <FilterTabs value={filter} counts={counts} onChange={setFilter} />
-          <label className="relative min-w-[150px] flex-1">
-            <span className="sr-only">Search questions and answers</span>
-            <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted" />
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search questions or answers…"
-              className="h-9 w-full rounded-full border border-line bg-surface pr-3 pl-8.5 text-[13px] text-ink placeholder:text-muted"
-            />
-          </label>
-        </div>
+      </div>
 
+      <div className="sticky top-0 z-10 -mx-1 mb-3 flex flex-wrap items-center gap-2 bg-panel px-1 py-2">
+        <FilterTabs value={filter} counts={counts} onChange={setFilter} />
+        <label className="relative min-w-[150px] flex-1">
+          <span className="sr-only">Search questions and answers</span>
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted" />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search questions or answers…"
+            className="h-9 w-full rounded-full border border-line bg-surface pr-3 pl-8.5 text-[13px] text-ink placeholder:text-muted"
+          />
+        </label>
+      </div>
+
+      <div className="mb-3">
         <UnmatchedPanel
           answers={stray}
           selectedId={selection?.kind === "answer" ? selection.answerId : null}
