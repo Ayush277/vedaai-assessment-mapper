@@ -187,10 +187,12 @@ export function ResultsScreen({ result }: { result: AssessmentResult }) {
         <p className="flex items-start gap-2 rounded-card border border-warn/25 bg-warn-soft px-3 py-2.5 text-[11px] leading-relaxed text-warn">
           <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
           <span>
-            <strong className="font-semibold">Read with local OCR.</strong> No AI
-            provider was configured for this run, so handwriting was read by
-            Tesseract. Question extraction is reliable; handwritten answers and
-            their matches should be checked before you rely on them.
+            <strong className="font-semibold">Read with local OCR.</strong>{" "}
+            {result.provider.localMode === "chosen"
+              ? "This run was set to use local Tesseract OCR rather than an AI provider."
+              : "No AI provider was configured for this run, so handwriting was read by Tesseract."}{" "}
+            Question extraction is reliable; handwritten answers and their
+            matches should be checked before you rely on them.
           </span>
         </p>
       ) : null}

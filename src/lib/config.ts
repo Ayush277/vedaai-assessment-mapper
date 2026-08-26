@@ -47,9 +47,21 @@ export const config = {
   get maxPagesPerDocument(): number {
     return num(process.env.MAX_PAGES_PER_DOCUMENT, 12);
   },
-  /** True when running without a configured AI provider. */
+  /** True when handwriting is being read by local OCR rather than a model. */
   get isDegraded(): boolean {
     return resolveProvider() === "local";
+  },
+  /**
+   * Why local OCR is in use. "chosen" and "no-key" look identical in the
+   * output but mean opposite things to whoever is reading the screen: one is a
+   * deliberate setting, the other is missing configuration. Telling someone to
+   * set a key they have already set is worse than saying nothing.
+   */
+  get localMode(): "chosen" | "no-key" | null {
+    if (resolveProvider() !== "local") return null;
+    const requested = (process.env.AI_PROVIDER ?? "").trim().toLowerCase();
+    if (requested === "local") return "chosen";
+    return "no-key";
   },
 } as const;
 

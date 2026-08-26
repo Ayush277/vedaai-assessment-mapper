@@ -30,10 +30,11 @@ function validate(file: File, maxMb: number): string | null {
 
 export function UploadScreen({
   maxUploadMb,
-  degraded,
+  localMode,
 }: {
   maxUploadMb: number;
-  degraded: boolean;
+  /** Set when handwriting will be read by local OCR, and why. */
+  localMode: "chosen" | "no-key" | null;
 }) {
   const router = useRouter();
   const [files, setFiles] = useState<Partial<Record<Slot, File>>>({});
@@ -196,14 +197,28 @@ export function UploadScreen({
             : "Once both files are uploaded, you'll be able to map answers with questions"}
         </p>
 
-        {degraded ? (
+        {localMode ? (
           <p className="mt-6 flex max-w-xl items-start gap-2 rounded-xl border border-warn/25 bg-warn-soft px-4 py-3 text-xs text-warn">
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
             <span>
-              No AI provider is configured, so extraction runs on local Tesseract
-              OCR. Printed question papers read well; handwriting recognition will
-              be poor. Set <code className="font-mono">AI_API_KEY</code> in{" "}
-              <code className="font-mono">.env.local</code> for full accuracy.
+              {localMode === "chosen" ? (
+                <>
+                  Running on local Tesseract OCR because{" "}
+                  <code className="font-mono">AI_PROVIDER</code> is set to{" "}
+                  <code className="font-mono">local</code>. Printed question
+                  papers read well; handwriting recognition will be poor. Set{" "}
+                  <code className="font-mono">AI_PROVIDER=gemini</code> (or{" "}
+                  <code className="font-mono">anthropic</code>) for full accuracy.
+                </>
+              ) : (
+                <>
+                  No AI provider is configured, so extraction runs on local
+                  Tesseract OCR. Printed question papers read well; handwriting
+                  recognition will be poor. Set{" "}
+                  <code className="font-mono">AI_API_KEY</code> in{" "}
+                  <code className="font-mono">.env.local</code> for full accuracy.
+                </>
+              )}
             </span>
           </p>
         ) : null}

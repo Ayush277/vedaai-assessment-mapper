@@ -498,6 +498,7 @@ export async function runPipeline(params: {
         id: providers.vision.id,
         model: providers.vision.model,
         degraded: providers.vision.degraded,
+        localMode: config.localMode ?? undefined,
       },
     };
 

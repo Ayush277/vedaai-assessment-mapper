@@ -9,7 +9,7 @@ export default function HomePage() {
     <AppShell breadcrumb="Exams">
       <UploadScreen
         maxUploadMb={Math.round(config.maxUploadBytes / (1024 * 1024))}
-        degraded={config.isDegraded}
+        localMode={config.localMode}
       />
     </AppShell>
   );

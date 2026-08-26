@@ -220,8 +220,10 @@ export type AssessmentResult = {
   provider: {
     id: string;
     model: string;
-    /** True when running on local OCR because no API key was configured. */
+    /** True when handwriting was read by local OCR rather than a model. */
     degraded: boolean;
+    /** Why local OCR was used: a deliberate setting, or a missing key. */
+    localMode?: "chosen" | "no-key";
   };
   isDemo?: boolean;
 };
