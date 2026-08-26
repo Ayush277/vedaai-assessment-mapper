@@ -18,6 +18,7 @@ import { QuestionCard } from "./QuestionCard";
 import { SummaryStrip } from "./SummaryStrip";
 import { UnmatchedPanel } from "./UnmatchedPanel";
 import { FilterTabs } from "./FilterTabs";
+import { DegradationNotice } from "./DegradationNotice";
 
 type Selection =
   | { kind: "question"; questionId: string }
@@ -193,6 +194,8 @@ export function ResultsScreen({ result }: { result: AssessmentResult }) {
           </span>
         </p>
       ) : null}
+
+      <DegradationNotice degradations={result.degradations ?? []} />
 
       {result.warnings.length > 0 ? (
         <details className="rounded-card border border-warn/25 bg-warn-soft px-3 py-2.5">

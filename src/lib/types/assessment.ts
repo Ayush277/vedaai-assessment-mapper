@@ -153,6 +153,45 @@ export type GradingSummary = {
 /*                                   Result                                   */
 /* -------------------------------------------------------------------------- */
 
+/* -------------------------------------------------------------------------- */
+/*                                 Degradation                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Why an optional AI step did not run.
+ *
+ * The extraction, mapping and highlighting stages are mandatory and fail the
+ * run loudly. Question structuring, semantic similarity and grading are
+ * enhancements layered on top of deterministic logic, so they degrade instead —
+ * but a step that quietly does nothing is indistinguishable from one that was
+ * never configured, so the reason travels all the way to the results screen.
+ */
+export type DegradationKind =
+  | "quota"
+  | "credentials"
+  | "misconfigured"
+  | "network"
+  | "provider_unavailable"
+  | "unusable_response"
+  | "not_configured";
+
+export type DegradationStep =
+  | "question-structuring"
+  | "semantic-matching"
+  | "grading";
+
+export type Degradation = {
+  step: DegradationStep;
+  kind: DegradationKind;
+  /** User-facing sentence. Never contains provider bodies or keys. */
+  message: string;
+};
+
+/** True for the kinds a teacher can actually act on right now. */
+export function isActionableDegradation(kind: DegradationKind): boolean {
+  return kind === "quota" || kind === "credentials" || kind === "misconfigured";
+}
+
 export type ResultSummary = {
   totalQuestions: number;
   answered: number;
@@ -175,6 +214,8 @@ export type AssessmentResult = {
   gradingSummary?: GradingSummary;
   /** Non-fatal problems worth surfacing, e.g. "page 3 had no readable text". */
   warnings: string[];
+  /** Optional AI steps that did not run, and why. */
+  degradations: Degradation[];
   /** Which provider actually produced the extraction, for honest reporting. */
   provider: {
     id: string;

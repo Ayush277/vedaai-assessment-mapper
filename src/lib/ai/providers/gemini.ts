@@ -1,6 +1,7 @@
 import "server-only";
 import {
   chunkRegions,
+  classifyDegradation,
   fetchWithTimeout,
   ProviderAuthError,
   ProviderError,
@@ -232,14 +233,18 @@ function createReasoning(apiKey: string, model: string): ReasoningProvider {
             }),
           { attempts: 2 },
         );
-        return extractJson(raw);
+        const parsed = extractJson(raw);
+        if (parsed === null) {
+          console.warn("[gemini] reasoning returned unparseable JSON.");
+          return { ok: false, kind: "unusable_response" };
+        }
+        return { ok: true, value: parsed };
       } catch (error) {
-        // Reasoning is always an enhancement over deterministic logic that has
-        // already run, so a failure here degrades quality but never the run.
-        // It must still be logged: a silently skipped step is indistinguishable
-        // from one that was never configured, which makes it unexplainable.
+        // Reasoning is an enhancement over deterministic logic that has already
+        // run, so a failure degrades quality but never the run. The cause is
+        // both logged and returned, so the results screen can explain it.
         console.warn("[gemini] reasoning call failed, continuing without it:", error);
-        return null;
+        return { ok: false, kind: classifyDegradation(error) };
       }
     },
   };
@@ -248,7 +253,7 @@ function createReasoning(apiKey: string, model: string): ReasoningProvider {
 function createEmbeddings(apiKey: string, model: string): EmbeddingProvider {
   return {
     async embed(texts) {
-      if (texts.length === 0) return [];
+      if (texts.length === 0) return { ok: true, value: [] };
       try {
         const response = await withRetry(
           () =>
@@ -277,7 +282,15 @@ function createEmbeddings(apiKey: string, model: string): EmbeddingProvider {
           console.warn(
             `[gemini] embeddings unavailable (${response.status}); falling back to lexical similarity.`,
           );
-          return null;
+          const detail = await response.text().catch(() => "");
+          return {
+            ok: false,
+            kind: classifyDegradation(
+              response.status === 429
+                ? new RateLimitError(detail.slice(0, 120))
+                : new ProviderError(detail.slice(0, 120), response.status),
+            ),
+          };
         }
         const payload = (await response.json()) as {
           embeddings?: { values?: number[] }[];
@@ -287,15 +300,15 @@ function createEmbeddings(apiKey: string, model: string): EmbeddingProvider {
           console.warn(
             "[gemini] embeddings response did not match the request; falling back to lexical similarity.",
           );
-          return null;
+          return { ok: false, kind: "unusable_response" };
         }
-        return vectors;
+        return { ok: true, value: vectors };
       } catch (error) {
         console.warn(
           "[gemini] embeddings call failed; falling back to lexical similarity:",
           error,
         );
-        return null;
+        return { ok: false, kind: classifyDegradation(error) };
       }
     },
   };

@@ -1,5 +1,9 @@
-import type { Question } from "@/lib/types/assessment";
-import type { ReasoningProvider } from "@/lib/ai/provider";
+import type {
+  Degradation,
+  DegradationKind,
+  Question,
+} from "@/lib/types/assessment";
+import { describeDegradation, type ReasoningProvider } from "@/lib/ai/provider";
 import { QUESTION_STRUCTURE_SYSTEM } from "@/lib/ai/prompts";
 import { asArray, asNumber, asString, extractJson } from "@/lib/ai/json";
 import { unionNormalized } from "@/lib/vision/segmentation";
@@ -29,6 +33,7 @@ const HEADER_NOISE =
 export type QuestionExtractionResult = {
   questions: Question[];
   warnings: string[];
+  degradations: Degradation[];
 };
 
 /**
@@ -240,13 +245,13 @@ async function structuringPass(
   lines: TranscribedLine[],
   drafts: Draft[],
   reasoning: ReasoningProvider,
-): Promise<{ drafts: Draft[]; usedModel: boolean }> {
+): Promise<{ drafts: Draft[]; degradedBecause?: DegradationKind }> {
   const numbered = lines
     .map((line, index) => `${index}: ${line.text.trim()}`)
     .filter((line) => line.split(": ").slice(1).join(": ").length > 0)
     .join("\n");
 
-  if (!numbered.trim()) return { drafts, usedModel: false };
+  if (!numbered.trim()) return { drafts };
 
   const response = await reasoning.completeJson({
     system: QUESTION_STRUCTURE_SYSTEM,
@@ -257,13 +262,15 @@ async function structuringPass(
     maxOutputTokens: 8192,
   });
 
-  const parsed = extractJson(JSON.stringify(response ?? null));
+  if (!response.ok) return { drafts, degradedBecause: response.kind };
+
+  const parsed = extractJson(JSON.stringify(response.value));
   const rows = asArray(
     parsed && typeof parsed === "object" && "questions" in (parsed as object)
       ? (parsed as { questions: unknown }).questions
       : parsed,
   );
-  if (rows.length === 0) return { drafts, usedModel: false };
+  if (rows.length === 0) return { drafts, degradedBecause: "unusable_response" };
 
   const byNormalized = new Map(drafts.map((draft) => [draft.normalized, draft]));
   const additions: Draft[] = [];
@@ -322,7 +329,7 @@ async function structuringPass(
     }
   }
 
-  return { drafts: [...drafts, ...additions], usedModel: true };
+  return { drafts: [...drafts, ...additions] };
 }
 
 export async function extractQuestions(
@@ -330,10 +337,15 @@ export async function extractQuestions(
   reasoning: ReasoningProvider | null,
 ): Promise<QuestionExtractionResult> {
   const warnings: string[] = [];
+  const degradations: Degradation[] = [];
   const lines = flattenLines(transcript);
 
   if (lines.length === 0) {
-    return { questions: [], warnings: ["The question paper had no readable text."] };
+    return {
+      questions: [],
+      warnings: ["The question paper had no readable text."],
+      degradations,
+    };
   }
 
   let drafts = deterministicPass(lines);
@@ -343,11 +355,30 @@ export async function extractQuestions(
     try {
       const result = await structuringPass(lines, drafts, reasoning);
       drafts = result.drafts;
+      if (result.degradedBecause) {
+        degradations.push({
+          step: "question-structuring",
+          kind: result.degradedBecause,
+          message: describeDegradation(
+            result.degradedBecause,
+            "the AI check on question boundaries",
+          ),
+        });
+      }
     } catch {
       warnings.push(
         "The question structuring step failed; falling back to layout-only detection.",
       );
     }
+  } else {
+    degradations.push({
+      step: "question-structuring",
+      kind: "not_configured",
+      message: describeDegradation(
+        "not_configured",
+        "the AI check on question boundaries",
+      ),
+    });
   }
 
   if (drafts.length === 0) {
@@ -357,6 +388,7 @@ export async function extractQuestions(
         ...warnings,
         "No numbered questions were found in the question paper.",
       ],
+      degradations,
     };
   }
 
@@ -410,5 +442,5 @@ export async function extractQuestions(
     }
   }
 
-  return { questions, warnings };
+  return { questions, warnings, degradations };
 }

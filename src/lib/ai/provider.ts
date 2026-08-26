@@ -1,5 +1,6 @@
 import "server-only";
 import { config } from "@/lib/config";
+import type { DegradationKind } from "@/lib/types/assessment";
 
 /* -------------------------------------------------------------------------- */
 /*                              Provider contracts                            */
@@ -46,18 +47,70 @@ export interface VisionProvider {
   transcribeHandwritten(input: TranscribeInput): Promise<RegionTranscription[]>;
 }
 
+/**
+ * The result of an optional AI call.
+ *
+ * These calls must never throw — they sit on top of deterministic logic that
+ * has already produced an answer. But returning a bare `null` loses the one
+ * thing the user needs: *why* it did not run. An expired key and an unset key
+ * produce identical output otherwise.
+ */
+export type OptionalCall<T> =
+  | { ok: true; value: T }
+  | { ok: false; kind: DegradationKind };
+
+export function classifyDegradation(error: unknown): DegradationKind {
+  if (error instanceof ProviderAuthError) return "credentials";
+  if (error instanceof ProviderNetworkError) return "network";
+  if (error instanceof ProviderError) {
+    if (error.isRateLimit) return "quota";
+    if ((error.status ?? 0) >= 500) return "provider_unavailable";
+    if (error.isPermanent) return "misconfigured";
+    return "network";
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  if (/\bfetch\b|network|timeout|timed out|abort|ECONN|ENOTFOUND|EAI_AGAIN/i.test(message)) {
+    return "network";
+  }
+  return "unusable_response";
+}
+
+/** One sentence per cause, written for a teacher rather than an operator. */
+export function describeDegradation(
+  kind: DegradationKind,
+  step: string,
+): string {
+  switch (kind) {
+    case "quota":
+      return `The AI provider's quota ran out during this run, so ${step} was skipped. Everything else completed normally — try again once the quota resets.`;
+    case "credentials":
+      return `The AI provider rejected the configured key, so ${step} was skipped. Check AI_API_KEY.`;
+    case "misconfigured":
+      return `The AI provider rejected the request, so ${step} was skipped. Check that AI_MODEL names a model this key can use.`;
+    case "network":
+      return `The connection to the AI service dropped, so ${step} was skipped. Trying again usually resolves it.`;
+    case "provider_unavailable":
+      return `The AI model was temporarily overloaded, so ${step} was skipped. Trying again usually resolves it.`;
+    case "not_configured":
+      return `${step[0].toUpperCase()}${step.slice(1)} needs a configured AI provider, so it was skipped.`;
+    case "unusable_response":
+    default:
+      return `The AI service returned something unusable, so ${step} was skipped.`;
+  }
+}
+
 export interface EmbeddingProvider {
-  /** Returns null when embeddings are unavailable, so callers can fall back. */
-  embed(texts: string[]): Promise<number[][] | null>;
+  /** Never throws; reports why it could not run so callers can explain it. */
+  embed(texts: string[]): Promise<OptionalCall<number[][]>>;
 }
 
 export interface ReasoningProvider {
-  /** Structured JSON completion. Returns null on any failure — never throws. */
+  /** Never throws; reports why it could not run so callers can explain it. */
   completeJson(params: {
     system: string;
     prompt: string;
     maxOutputTokens?: number;
-  }): Promise<unknown | null>;
+  }): Promise<OptionalCall<unknown>>;
 }
 
 export type ProviderBundle = {

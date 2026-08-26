@@ -1,4 +1,5 @@
 import type { EmbeddingProvider } from "@/lib/ai/provider";
+import type { DegradationKind } from "@/lib/types/assessment";
 
 /**
  * Semantic similarity between an answer and the questions it might belong to.
@@ -102,6 +103,8 @@ export type SimilarityMatrix = {
   /** similarity[answerIndex][questionIndex], 0..1. */
   scores: number[][];
   method: "embedding" | "lexical";
+  /** Set when embeddings were available in principle but could not be used. */
+  degradedBecause?: DegradationKind;
 };
 
 export async function buildSimilarityMatrix(
@@ -113,11 +116,16 @@ export async function buildSimilarityMatrix(
     return { scores: [], method: "lexical" };
   }
 
+  let degradedBecause: DegradationKind | undefined;
+
   if (embeddings) {
-    const vectors = await embeddings.embed([...questionTexts, ...answerTexts]);
-    if (vectors && vectors.length === questionTexts.length + answerTexts.length) {
-      const questionVectors = vectors.slice(0, questionTexts.length);
-      const answerVectors = vectors.slice(questionTexts.length);
+    const result = await embeddings.embed([...questionTexts, ...answerTexts]);
+    if (
+      result.ok &&
+      result.value.length === questionTexts.length + answerTexts.length
+    ) {
+      const questionVectors = result.value.slice(0, questionTexts.length);
+      const answerVectors = result.value.slice(questionTexts.length);
       const scores = answerVectors.map((answerVector) =>
         questionVectors.map((questionVector) =>
           // Embedding cosine sits in -1..1; rescale so 0 means "unrelated".
@@ -126,6 +134,9 @@ export async function buildSimilarityMatrix(
       );
       return { scores, method: "embedding" };
     }
+    // Falling back to lexical still produces a real answer, so the run
+    // continues — but the reason is carried up so the UI can say why.
+    degradedBecause = result.ok ? "unusable_response" : result.kind;
   }
 
   const index = buildLexicalIndex([...questionTexts, ...answerTexts]);
@@ -135,5 +146,5 @@ export async function buildSimilarityMatrix(
     questionVectors.map((questionVector) => cosine(answerVector, questionVector)),
   );
 
-  return { scores, method: "lexical" };
+  return { scores, method: "lexical", degradedBecause };
 }

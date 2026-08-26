@@ -2,10 +2,15 @@ import type {
   Answer,
   AnswerMapping,
   ConfidenceBand,
+  Degradation,
   MappingMethod,
   Question,
 } from "@/lib/types/assessment";
-import type { EmbeddingProvider, ReasoningProvider } from "@/lib/ai/provider";
+import {
+  describeDegradation,
+  type EmbeddingProvider,
+  type ReasoningProvider,
+} from "@/lib/ai/provider";
 import { MAPPING_SYSTEM } from "@/lib/ai/prompts";
 import { asArray, asConfidence, asString, extractJson } from "@/lib/ai/json";
 import { runDeterministicMatching } from "./deterministic";
@@ -40,6 +45,8 @@ export type MappingResult = {
   mappings: AnswerMapping[];
   unmatchedAnswerIds: string[];
   similarityMethod: "embedding" | "lexical" | "none";
+  /** Optional AI steps that could not run during matching, and why. */
+  degradations: Degradation[];
 };
 
 export function toBand(confidence: number): ConfidenceBand {
@@ -127,6 +134,7 @@ export async function mapAnswersToQuestions(
   const openAnswers = answers.filter(eligible);
 
   let similarityMethod: MappingResult["similarityMethod"] = "none";
+  const degradations: Degradation[] = [];
 
   if (openQuestions.length > 0 && openAnswers.length > 0) {
     const matrix = await buildSimilarityMatrix(
@@ -135,6 +143,16 @@ export async function mapAnswersToQuestions(
       providers.embeddings,
     );
     similarityMethod = matrix.method;
+    if (matrix.degradedBecause) {
+      degradations.push({
+        step: "semantic-matching",
+        kind: matrix.degradedBecause,
+        message: describeDegradation(
+          matrix.degradedBecause,
+          "AI similarity matching fell back to local text matching, which",
+        ).replace(" was skipped", " was used instead"),
+      });
+    }
 
     // Greedy best-first over the whole score matrix so the strongest pair wins
     // globally rather than whichever answer happens to be processed first.
@@ -221,7 +239,20 @@ export async function mapAnswersToQuestions(
       maxOutputTokens: 4096,
     });
 
-    const parsed = extractJson(JSON.stringify(response ?? null));
+    if (!response.ok) {
+      degradations.push({
+        step: "semantic-matching",
+        kind: response.kind,
+        message: describeDegradation(
+          response.kind,
+          "AI reasoning over the remaining ambiguous answers",
+        ),
+      });
+    }
+
+    const parsed = extractJson(
+      JSON.stringify(response.ok ? response.value : null),
+    );
     const rows = asArray(
       parsed && typeof parsed === "object" && "matches" in (parsed as object)
         ? (parsed as { matches: unknown }).matches
@@ -314,5 +345,5 @@ export async function mapAnswersToQuestions(
     .filter((answer) => !usedAnswers.has(answer.id))
     .map((answer) => answer.id);
 
-  return { mappings, unmatchedAnswerIds, similarityMethod };
+  return { mappings, unmatchedAnswerIds, similarityMethod, degradations };
 }

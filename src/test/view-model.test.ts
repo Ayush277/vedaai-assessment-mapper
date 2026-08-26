@@ -97,6 +97,7 @@ function makeResult(): AssessmentResult {
       unmatchedAnswers: 0,
     },
     warnings: [],
+    degradations: [],
     provider: { id: "gemini", model: "test", degraded: false },
   };
 }

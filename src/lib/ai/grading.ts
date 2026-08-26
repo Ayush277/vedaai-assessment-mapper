@@ -2,6 +2,7 @@ import "server-only";
 import type {
   Answer,
   AnswerMapping,
+  DegradationKind,
   Evaluation,
   GradingSummary,
   Question,
@@ -28,6 +29,10 @@ export type GradingResult = {
   summary: GradingSummary;
 };
 
+export type GradingOutcome =
+  | { ok: true; result: GradingResult }
+  | { ok: false; kind: DegradationKind };
+
 function toEvaluation(value: unknown): Evaluation {
   const text = asString(value).toLowerCase().trim().replace(/\s+/g, "_");
   return (EVALUATIONS as string[]).includes(text)
@@ -40,9 +45,9 @@ export async function gradeAssessment(params: {
   answers: Answer[];
   mappings: AnswerMapping[];
   reasoning: ReasoningProvider | null;
-}): Promise<GradingResult | null> {
+}): Promise<GradingOutcome> {
   const { questions, answers, mappings, reasoning } = params;
-  if (!reasoning) return null;
+  if (!reasoning) return { ok: false, kind: "not_configured" };
 
   const answerById = new Map(answers.map((answer) => [answer.id, answer]));
   const mappingByQuestion = new Map(
@@ -71,13 +76,16 @@ export async function gradeAssessment(params: {
   if (attempted.length === 0) {
     const maxMarks = notAttempted.reduce((sum, grade) => sum + grade.maxMarks, 0);
     return {
-      grades: notAttempted,
-      summary: {
-        marksObtained: 0,
-        maxMarks,
-        percentage: 0,
-        summary: "No answers could be matched to the questions on this paper.",
-        improvementAreas: [],
+      ok: true,
+      result: {
+        grades: notAttempted,
+        summary: {
+          marksObtained: 0,
+          maxMarks,
+          percentage: 0,
+          summary: "No answers could be matched to the questions on this paper.",
+          improvementAreas: [],
+        },
       },
     };
   }
@@ -104,11 +112,11 @@ export async function gradeAssessment(params: {
     maxOutputTokens: 8192,
   });
 
-  if (!response) return null;
+  if (!response.ok) return { ok: false, kind: response.kind };
 
-  const parsed = response as Record<string, unknown>;
+  const parsed = response.value as Record<string, unknown>;
   const rows = asArray(parsed.grades);
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return { ok: false, kind: "unusable_response" };
 
   const byQuestion = new Map<string, QuestionGrade>();
   for (const row of rows) {
@@ -167,16 +175,19 @@ export async function gradeAssessment(params: {
   const overall = (parsed.overall ?? {}) as Record<string, unknown>;
 
   return {
-    grades,
-    summary: {
-      marksObtained,
-      maxMarks,
-      percentage: maxMarks > 0 ? Math.round((marksObtained / maxMarks) * 100) : 0,
-      summary: asString(overall.summary).trim(),
-      improvementAreas: asArray(overall.improvementAreas)
-        .map((entry) => asString(entry).trim())
-        .filter(Boolean)
-        .slice(0, 4),
+    ok: true,
+    result: {
+      grades,
+      summary: {
+        marksObtained,
+        maxMarks,
+        percentage: maxMarks > 0 ? Math.round((marksObtained / maxMarks) * 100) : 0,
+        summary: asString(overall.summary).trim(),
+        improvementAreas: asArray(overall.improvementAreas)
+          .map((entry) => asString(entry).trim())
+          .filter(Boolean)
+          .slice(0, 4),
+      },
     },
   };
 }

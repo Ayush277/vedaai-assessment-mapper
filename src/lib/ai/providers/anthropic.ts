@@ -1,6 +1,7 @@
 import "server-only";
 import {
   chunkRegions,
+  classifyDegradation,
   fetchWithTimeout,
   ProviderAuthError,
   ProviderError,
@@ -216,13 +217,18 @@ function createReasoning(apiKey: string, model: string): ReasoningProvider {
             }),
           { attempts: 2 },
         );
-        return extractJson(raw);
+        const parsed = extractJson(raw);
+        if (parsed === null) {
+          console.warn("[anthropic] reasoning returned unparseable JSON.");
+          return { ok: false, kind: "unusable_response" };
+        }
+        return { ok: true, value: parsed };
       } catch (error) {
         console.warn(
           "[anthropic] reasoning call failed, continuing without it:",
           error,
         );
-        return null;
+        return { ok: false, kind: classifyDegradation(error) };
       }
     },
   };

@@ -2,12 +2,18 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { config } from "@/lib/config";
 import {
+  classifyDegradation,
+  describeDegradation,
   getProviders,
   ProviderAuthError,
   ProviderError,
   ProviderNetworkError,
 } from "@/lib/ai/provider";
-import { gradeAssessment } from "@/lib/ai/grading";
+import {
+  gradeAssessment,
+  type GradingOutcome,
+  type GradingResult,
+} from "@/lib/ai/grading";
 import { DocumentError, normalizeDocument } from "@/lib/document/normalize";
 import { transcribeDocument } from "@/lib/vision/transcribe";
 import { extractQuestions } from "@/lib/extraction/questions";
@@ -15,6 +21,7 @@ import { extractAnswers } from "@/lib/extraction/answers";
 import { mapAnswersToQuestions } from "@/lib/mapping/mapper";
 import type {
   AssessmentResult,
+  Degradation,
   JobError,
   JobRecord,
   PipelineStage,
@@ -39,6 +46,15 @@ export type UploadInput = {
   mimeType: string;
   bytes: Uint8Array;
 };
+
+/** Keep one entry per step, preferring the first (most specific) cause. */
+function dedupeDegradations(entries: Degradation[]): Degradation[] {
+  const byStep = new Map<string, Degradation>();
+  for (const entry of entries) {
+    if (!byStep.has(entry.step)) byStep.set(entry.step, entry);
+  }
+  return [...byStep.values()];
+}
 
 export function createJobId(): string {
   return randomBytes(12).toString("hex");
@@ -255,6 +271,7 @@ export async function runPipeline(params: {
 
   let stage: PipelineStage = "uploading";
   const warnings: string[] = [];
+  const degradations: Degradation[] = [];
 
   try {
     void sweepExpiredJobs();
@@ -325,6 +342,7 @@ export async function runPipeline(params: {
       providers.reasoning,
     );
     warnings.push(...questionResult.warnings);
+    degradations.push(...questionResult.degradations);
 
     if (questionResult.questions.length === 0) {
       await tracker.fail(
@@ -384,6 +402,7 @@ export async function runPipeline(params: {
       answerResult.answers,
       { embeddings: providers.embeddings, reasoning: providers.reasoning },
     );
+    degradations.push(...mappingResult.degradations);
     await tracker.complete(
       stage,
       `Matched using ${mappingResult.similarityMethod === "embedding" ? "embeddings" : "text similarity"}`,
@@ -411,12 +430,14 @@ export async function runPipeline(params: {
     );
 
     /* ------------------------------ Grading ---------------------------- */
-    let grading: Awaited<ReturnType<typeof gradeAssessment>> = null;
+    let grading: GradingResult | null = null;
     if (includeGrading) {
       stage = "grading";
       await tracker.begin(stage);
+
+      let outcome: GradingOutcome;
       try {
-        grading = await gradeAssessment({
+        outcome = await gradeAssessment({
           questions: questionResult.questions,
           answers: answerResult.answers,
           mappings: mappingResult.mappings,
@@ -424,22 +445,21 @@ export async function runPipeline(params: {
         });
       } catch (error) {
         console.warn(`[pipeline ${jobId}] grading failed:`, error);
-        grading = null;
+        outcome = { ok: false, kind: classifyDegradation(error) };
       }
-      if (grading) {
+
+      if (outcome.ok) {
+        grading = outcome.result;
         await tracker.complete(
           stage,
           `${grading.summary.marksObtained}/${grading.summary.maxMarks} marks`,
         );
       } else {
+        // Missing scores with no explanation read as a bug rather than a
+        // degraded run, so the specific cause is carried to the results screen.
+        const message = describeDegradation(outcome.kind, "grading");
+        degradations.push({ step: "grading", kind: outcome.kind, message });
         await tracker.skip(stage, "Grading unavailable for this run");
-        // The results screen would otherwise just be missing its scores with
-        // no explanation, which reads as a bug rather than a degraded run.
-        warnings.push(
-          providers.reasoning
-            ? "AI grading was unavailable for this run, so no marks were awarded. Extraction and mapping are unaffected."
-            : "AI grading needs a configured AI provider, so no marks were awarded.",
-        );
       }
     }
 
@@ -459,6 +479,9 @@ export async function runPipeline(params: {
       grades: grading?.grades,
       gradingSummary: grading?.summary,
       warnings: [...new Set(warnings)],
+      // De-duplicated by step: one quota exhaustion knocks out several optional
+      // steps, and repeating the same sentence three times helps nobody.
+      degradations: dedupeDegradations(degradations),
       provider: {
         id: providers.vision.id,
         model: providers.vision.model,

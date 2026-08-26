@@ -25,6 +25,7 @@ answers, mappings or highlight coordinates is hardcoded.
 | Answers spanning pages | One answer, many regions; the viewer flags and links the continuation |
 | Exact highlighting | Normalized 0–1 boxes from real ink detection, rendered as CSS percentages |
 | Confidence | Every mapping carries a score, a band, and the reasons behind it |
+| Degraded runs | When an optional AI step cannot run, the results screen names the cause — expired key, exhausted quota, wrong model, network — instead of silently omitting it |
 | Progress | Stage-based, driven by the backend's real position in the pipeline |
 
 ---
@@ -128,7 +129,7 @@ Open http://localhost:3000.
 
 ```bash
 npm run build      # production build
-npm test           # 110 unit tests
+npm test           # 123 unit tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 ```
@@ -236,7 +237,7 @@ during that run — which is itself a real state the app handles.
 npm test
 ```
 
-110 tests over the logic that decides correctness, not the pixels:
+123 tests over the logic that decides correctness, not the pixels:
 
 - **Label normalisation** — `11(a)`, `11 (a)`, `Q11(a)`, `Question 11(a)`, `11-a`
   all collapse to one form; `11` stays distinct from `11a`; OCR digit confusions
@@ -260,6 +261,9 @@ npm test
   ones back off; timeouts and dropped connections become typed provider errors;
   a rejected key is reported as a key problem even though Gemini returns it as a
   400; and no provider body or stack trace ever reaches the client.
+- **Degradation reporting** — an exhausted quota, a rejected key and an unconfigured
+  provider produce three different explanations rather than three identical blanks;
+  mandatory stages still fail loudly while optional ones degrade and say why.
 
 ### End-to-end verification
 
@@ -277,6 +281,21 @@ byte-identical to the Gemini run, with handwriting transcription degraded as
 expected.
 
 ---
+
+### Mandatory vs. optional stages
+
+Document normalisation, region transcription, question extraction, answer
+extraction and mapping are **mandatory**: if one fails the run fails, with a
+message naming the real cause.
+
+Question structuring, semantic similarity and grading are **optional**. Each sits
+on top of deterministic logic that has already produced a result, so a failure
+degrades quality rather than the run. Every degradation carries a typed reason
+(`quota`, `credentials`, `misconfigured`, `network`, `provider_unavailable`,
+`unusable_response`, `not_configured`) all the way to the results screen, where
+causes the teacher can act on are shown in red and the rest in amber. A key that
+expires mid-run therefore produces an explicit "AI quota ran out during this run"
+notice, not a silently missing grading column.
 
 ## Limitations
 
@@ -322,7 +341,7 @@ src/
     mapping/     normalize-label, deterministic, semantic, mapper
     processing/  pipeline, job-store, stages
     types/       assessment.ts — the whole domain model
-  test/          110 tests
+  test/          123 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   capture-demo.ts                freezes a real run into the demo dataset
