@@ -23,6 +23,7 @@ import { mapAnswersToQuestions } from "@/lib/mapping/mapper";
 import type {
   AssessmentResult,
   Degradation,
+  DegradationKind,
   JobError,
   ModelAnswer,
   JobRecord,
@@ -280,6 +281,43 @@ export async function runPipeline(params: {
 
     const providers = await getProviders();
 
+    /**
+     * Read a document, falling back to local OCR if the cloud provider gives
+     * out mid-run.
+     *
+     * Transcription is a mandatory stage, so a quota ceiling or a rejected key
+     * would otherwise end the run with an error page. On a deployed demo that
+     * is the worst outcome available: the visitor sees nothing work. Tesseract
+     * needs no key and no quota, so the run completes with weaker handwriting
+     * recognition — and the result is marked degraded, which the results screen
+     * already explains in as many words.
+     */
+    let usedFallback = false;
+    const transcribeWithFallback = async (
+      params: Parameters<typeof transcribeDocument>[0],
+    ) => {
+      try {
+        return await transcribeDocument(params);
+      } catch (error) {
+        const kind = classifyDegradation(error);
+        const recoverable =
+          kind === "quota" || kind === "credentials" || kind === "misconfigured";
+        if (!recoverable || providers.vision.degraded) throw error;
+
+        console.warn(
+          `[pipeline ${jobId}] ${kind} from ${providers.vision.id}; falling back to local OCR`,
+        );
+        const { createLocalProviders } = await import("@/lib/ai/providers/local");
+        usedFallback = true;
+        fallbackKind = kind;
+        return transcribeDocument({
+          ...params,
+          vision: createLocalProviders().vision,
+        });
+      }
+    };
+    let fallbackKind: DegradationKind | null = null;
+
     /* ------------------------------ Upload ----------------------------- */
     await tracker.begin("uploading");
 
@@ -327,7 +365,7 @@ export async function runPipeline(params: {
     stage = "reading-question-paper";
     await tracker.begin(stage, `Page 1 of ${paper.bitmaps.length}`);
 
-    const paperTranscript = await transcribeDocument({
+    const paperTranscript = await transcribeWithFallback({
       bitmaps: paper.bitmaps,
       mode: "printed",
       vision: providers.vision,
@@ -373,7 +411,7 @@ export async function runPipeline(params: {
     stage = "reading-answer-sheet";
     await tracker.begin(stage, `Page 1 of ${sheet.bitmaps.length}`);
 
-    const sheetTranscript = await transcribeDocument({
+    const sheetTranscript = await transcribeWithFallback({
       bitmaps: sheet.bitmaps,
       mode: "handwritten",
       vision: providers.vision,
@@ -514,6 +552,14 @@ export async function runPipeline(params: {
     stage = "preparing-results";
     await tracker.begin(stage);
 
+    if (usedFallback && fallbackKind) {
+      warnings.push(
+        fallbackKind === "quota"
+          ? "The AI provider's quota ran out during this run, so the pages were read with local OCR instead. Extraction and mapping completed, but handwriting recognition is weaker than usual."
+          : "The AI provider could not be used for this run, so the pages were read with local OCR instead. Handwriting recognition is weaker than usual.",
+      );
+    }
+
     const result: AssessmentResult = {
       jobId,
       questionPaper: paper.document,
@@ -531,10 +577,10 @@ export async function runPipeline(params: {
       // steps, and repeating the same sentence three times helps nobody.
       degradations: dedupeDegradations(degradations),
       provider: {
-        id: providers.vision.id,
-        model: providers.vision.model,
-        degraded: providers.vision.degraded,
-        localMode: config.localMode ?? undefined,
+        id: usedFallback ? "local" : providers.vision.id,
+        model: usedFallback ? "tesseract-eng" : providers.vision.model,
+        degraded: usedFallback || providers.vision.degraded,
+        localMode: usedFallback ? "no-key" : (config.localMode ?? undefined),
       },
     };
 
