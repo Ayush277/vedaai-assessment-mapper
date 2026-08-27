@@ -23,7 +23,17 @@ type Worker = Awaited<ReturnType<typeof createWorker>>;
 
 async function createWorker() {
   const { createWorker: create } = await import("tesseract.js");
-  return create("eng", 1, { logger: () => {} });
+  const os = await import("node:os");
+
+  // Tesseract caches its ~5MB language data on disk on first use, and defaults
+  // to the current working directory. That directory is read-only on serverless
+  // hosts, so the download throws and takes the whole run down. The OS temp
+  // directory is the one writable path on every target, and the file survives
+  // for the life of the instance so warm invocations skip the download.
+  return create("eng", 1, {
+    logger: () => {},
+    cachePath: os.tmpdir(),
+  });
 }
 
 let workerPromise: Promise<Worker> | null = null;
