@@ -71,8 +71,16 @@ function parseFrom(text: string): ParsedLabel | null {
   const main = String(Number(head[1]));
   const tail = text.slice(head[1].length);
 
-  // A bracketed sub-part is unambiguous: "11(a)", "11 (ii)", "11[b]".
-  const bracketed = tail.match(/^\s*[([]\s*([a-zA-Z]{1,4})\s*[)\]]/);
+  // A bracketed sub-part: "11(a)", "11 (ii)", "11[b]".
+  //
+  // The closing bracket is optional because handwriting OCR loses it
+  // constantly — a bracket is a thin stroke, and "11 (b" is read far more often
+  // than "11 (b)". Without this the sub-part is dropped and the answer collapses
+  // onto its parent question, which then looks confidently answered while the
+  // real sub-parts read as blank.
+  const bracketed = tail.match(
+    /^\s*[([]\s*([a-zA-Z]{1,4})\s*(?:[)\]]|(?![a-zA-Z]))/,
+  );
   if (bracketed) {
     const sub = canonicalSub(bracketed[1]);
     if (sub) {
@@ -135,7 +143,7 @@ export function splitLeadingLabel(line: string): {
 } {
   const trimmed = line.trim();
   const match = trimmed.match(
-    /^((?:section\s+[a-z0-9]+\s*[-–—:.]?\s*)?(?:part\s+[a-z0-9]+\s*[-–—:.]?\s*)?(?:ans(?:wer)?\s*[.:-]?\s*)?(?:q(?:uestion|ues|no)?\s*[.:-]?\s*)?\d{1,3}\s*(?:\(\s*[a-zA-Z]{1,4}\s*\)|[.)\-–—:]\s*[a-zA-Z]\)|[.)\-–—:])?)\s*/i,
+    /^((?:section\s+[a-z0-9]+\s*[-–—:.]?\s*)?(?:part\s+[a-z0-9]+\s*[-–—:.]?\s*)?(?:ans(?:wer)?\s*[.:-]?\s*)?(?:q(?:uestion|ues|no)?\s*[.:-]?\s*)?\d{1,3}\s*(?:[([]\s*[a-zA-Z]{1,4}\s*[)\]]?|[.)\-–—:]\s*[a-zA-Z]\)|[.)\-–—:])?)\s*/i,
   );
 
   if (!match) return { normalized: "", rest: trimmed };

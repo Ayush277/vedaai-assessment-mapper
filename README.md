@@ -149,7 +149,7 @@ Open http://localhost:3000.
 
 ```bash
 npm run build      # production build
-npm test           # 133 unit tests
+npm test           # 137 unit tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 ```
@@ -257,11 +257,12 @@ during that run — which is itself a real state the app handles.
 npm test
 ```
 
-133 tests over the logic that decides correctness, not the pixels:
+137 tests over the logic that decides correctness, not the pixels:
 
 - **Label normalisation** — `11(a)`, `11 (a)`, `Q11(a)`, `Question 11(a)`, `11-a`
   all collapse to one form; `11` stays distinct from `11a`; OCR digit confusions
-  are repaired; `2` sorts before `10`.
+  are repaired; a closing bracket lost by OCR (`11 (b`) still resolves to `11b`
+  rather than collapsing onto the parent; `2` sorts before `10`.
 - **Question parsing** — `10, 11, 11(a), 11(b), 12` come out as five questions in
   printed order; marks and sections are captured; page furniture is ignored;
   two questions sharing one OCR line are split apart while `22/7 x 7 x 7` is not.
@@ -416,7 +417,7 @@ src/
     mapping/     normalize-label, deterministic, semantic, mapper
     processing/  pipeline, job-store, stages
     types/       assessment.ts — the whole domain model
-  test/          133 tests
+  test/          137 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   capture-demo.ts                freezes a real run into the demo dataset

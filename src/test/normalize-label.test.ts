@@ -58,6 +58,22 @@ describe("normalizeLabel", () => {
     expect(normalizeLabel("Q l2")).toBe("12");
   });
 
+  it("keeps the sub-part when OCR loses the closing bracket", () => {
+    // A bracket is a thin stroke and handwriting OCR drops it constantly.
+    // Losing it used to collapse "11 (b" onto "11", which handed the answer to
+    // the parent stem and left both real sub-parts reading as unanswered.
+    expect(normalizeLabel("11 (b")).toBe("11b");
+    expect(normalizeLabel("11 (a")).toBe("11a");
+    expect(normalizeLabel("5 (ii")).toBe("5ii");
+    expect(normalizeLabel("11 b)")).toBe("11b");
+    expect(normalizeLabel("11[a")).toBe("11a");
+  });
+
+  it("still reads a bare parent number as the parent", () => {
+    expect(normalizeLabel("11")).toBe("11");
+    expect(normalizeLabel("11.")).toBe("11");
+  });
+
   it("records the parent question for a sub-part", () => {
     expect(parseLabel("11(b)")).toMatchObject({ main: "11", sub: "b", parent: "11" });
     expect(parseLabel("11").parent).toBeUndefined();
@@ -75,6 +91,12 @@ describe("splitLeadingLabel", () => {
     const result = splitLeadingLabel("1 What is photosynthesis?");
     expect(result.normalized).toBe("1");
     expect(result.rest).toBe("What is photosynthesis?");
+  });
+
+  it("strips a label whose closing bracket was lost", () => {
+    const result = splitLeadingLabel("11 (b A student table with roll no as the key");
+    expect(result.normalized).toBe("11b");
+    expect(result.rest).toBe("A student table with roll no as the key");
   });
 
   it("returns no label for an unnumbered line", () => {

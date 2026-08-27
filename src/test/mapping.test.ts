@@ -153,6 +153,28 @@ describe("mapAnswersToQuestions", () => {
     expect(mappings[0].answerId).toBe("a_1");
   });
 
+  it("does not let a bracket lost by OCR hand a sub-part answer to its parent", async () => {
+    // The real failure this guards: OCR read "11 (b)" as "11 (b", which
+    // collapsed to "11". The parent stem then looked confidently answered while
+    // both actual sub-parts read as unanswered.
+    const questions = [
+      question("11", 0, "Answer both parts of this question."),
+      question("11(a)", 1, "Explain the process of normalization in databases."),
+      question("11(b)", 2, "Give one example of a table in second normal form."),
+    ];
+    const answers = [
+      answer("a_1", 0, "A student table with roll no as the key is in 2NF.", "11 (b"),
+      answer("a_2", 1, "Normalization organises the columns and tables.", "11 (a"),
+    ];
+
+    const { mappings } = await mapAnswersToQuestions(questions, answers, noProviders);
+
+    expect(mappings.find((m) => m.questionId === "q_11b")?.answerId).toBe("a_1");
+    expect(mappings.find((m) => m.questionId === "q_11a")?.answerId).toBe("a_2");
+    // The stem itself has no answer of its own.
+    expect(mappings.find((m) => m.questionId === "q_11")?.status).toBe("unanswered");
+  });
+
   it("does not treat a different sub-part as a typo of its sibling", async () => {
     const questions = [
       question("11(a)", 0, "Explain the process of normalization."),
