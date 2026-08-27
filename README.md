@@ -1,108 +1,315 @@
 <div align="center">
 
-<img src="public/avatar/logo-banner.svg" alt="VedaAI" width="420" />
+<img src="public/avatar/logo-banner.svg" alt="VedaAI" width="380" />
 
-# Assessment Extraction &amp; Answer Mapping
+### AI Assessment Extraction &amp; Answer Mapping
 
-**Upload a question paper and a student's handwritten answer sheet.
-Get every question in printed order, every answer mapped to its question, and
-the exact region of the page highlighted when you click.**
+Upload a question paper and a student's handwritten answer sheet.
+Get every question in printed order, every answer mapped to its question,
+and the exact region of the page highlighted when you click.
 
-Built for the VedaAI hiring assignment.
+<br/>
 
-[Approach](#approach) · [AI model](#ai-model--api) · [Accuracy](#accuracy)
-· [Edge cases](#edge-cases) · [Run it](#run-it-locally) · [Limitations](#assumptions--limitations)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?style=flat-square&logo=next.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-v4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-vision%20%2B%20embeddings-4285F4?style=flat-square&logo=google&logoColor=white)
+![Tests](https://img.shields.io/badge/tests-137%20passing-16A34A?style=flat-square)
 
 </div>
 
 ---
 
-## The problem
+## Contents
+
+1. [What it does](#1-what-it-does)
+2. [Screens](#2-screens)
+3. [**Run it on your own PC**](#3-run-it-on-your-own-pc)
+4. [How it works](#4-how-it-works)
+5. [AI model and API](#5-ai-model-and-api)
+6. [Accuracy](#6-accuracy)
+7. [Edge cases](#7-edge-cases)
+8. [Implementation quality](#8-implementation-quality)
+9. [Tech stack and structure](#9-tech-stack-and-structure)
+10. [Deployment](#10-deployment)
+11. [Assumptions and limitations](#11-assumptions-and-limitations)
+
+---
+
+## 1. What it does
+
+### The problem
 
 Marking a paper by hand means holding two documents in your head at once. The
-question paper is ordered; the answer sheet almost never is. A student answers
-3 before 2, skips 4 entirely, runs question 7 across a page break, and labels an
-answer "18" on a paper that stops at 12.
+question paper is ordered; the answer sheet almost never is. A student answers 3
+before 2, skips 4 entirely, runs question 7 across a page break, and labels an
+answer `18` on a paper that stops at `12`.
 
-This app does that reconciliation and shows its work.
+This app does that reconciliation, and shows its work.
 
-<img src="docs/screenshots/03-highlight.png" alt="Question selected, with the matching answer highlighted on the sheet" />
+### The features
 
-<sub>Click a question on the left → the sheet scrolls to that answer and outlines
-it in green. Every other detected answer stays as a faint dashed outline you can
-click to jump back the other way.</sub>
-
----
-
-## What it does
-
-| | |
+| Capability | Behaviour |
 |---|---|
-| **Extracts every question** in printed order, preserving the original numbering |
-| **Treats labelled sub-parts as separate questions** — `11 (a)` and `11 (b)` are two entries, indented under `11` |
-| **Reads handwriting** page by page and segments it into discrete answers |
-| **Maps answers to questions** even when written out of order |
-| **Flags unanswered questions** without inventing an answer |
-| **Surfaces unmatched answers** instead of dropping them |
-| **Follows an answer across pages** and highlights every region |
-| **Highlights the exact region**, not the page |
-| **Grades and gives feedback** per question and overall, with a marks summary |
-| **Writes the expected answer** for questions the student left blank |
+| **Question extraction** | Every question in printed order, original numbering preserved |
+| **Sub-parts** | `11 (a)` and `11 (b)` are separate entries, indented under `11` |
+| **Handwriting extraction** | Read page by page, segmented into discrete answers |
+| **Answer mapping** | Correct even when answers are written out of order |
+| **Unanswered** | Flagged plainly — no answer is invented or borrowed |
+| **Unmatched** | Surfaced in their own panel instead of being dropped |
+| **Multi-page answers** | Followed across page breaks, every region highlighted |
+| **Exact highlighting** | The region, never the whole page |
+| **Grading** | Marks, percentage and feedback per question and overall |
+| **Expected answers** | For blank questions, what the answer should have been |
 
 ---
 
-## Screens
+## 2. Screens
 
-### Upload
+<table>
+<tr>
+<td width="50%" valign="top">
+
+**Upload**
 
 <img src="docs/screenshots/01-upload.png" alt="Upload screen" />
 
-Two drop zones, format and size validation, and a disabled action until both
-files are present. Unsupported type, empty file and oversize file each get their
-own message.
+Two drop zones, format and size validation, action disabled until both files are
+present.
 
-### Results
+</td>
+<td width="50%" valign="top">
+
+**Results**
 
 <img src="docs/screenshots/02-results.png" alt="Results screen" />
 
-Questions on the left in printed order, the answer sheet on the right as one
-continuous scroll. The strip along the top is the whole paper at a glance:
-questions, answered, unanswered, needs review, unmatched.
+Questions left in printed order, answer sheet right as one continuous scroll.
 
-### An answer that spans pages
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
 
-<img src="docs/screenshots/04-multipage.png" alt="A multi-page answer highlighted across two pages" />
+**Click a question → the answer highlights**
 
-Question 7's answer runs from page 2 onto page 3. Both regions are highlighted,
-the card is chipped `Pages 2, 3`, and the sheet scrolls continuously so you
-follow it in one motion rather than flipping pages.
+<img src="docs/screenshots/03-highlight.png" alt="Answer highlighted" />
 
-### Unanswered, with the expected answer
+The sheet scrolls to it and outlines it green. Faint dashed outlines mark every
+other answer — click one to jump back the other way.
 
-<img src="docs/screenshots/05-unanswered.png" alt="An unanswered question showing the AI-written expected answer" />
+</td>
+<td width="50%" valign="top">
 
-An unanswered question shows **No answer found** — and, when an AI provider is
-configured, what the answer should have been, with the marking points. It is
-captioned *Written by AI · not the student's work* so it can never be read as
+**An answer spanning two pages**
+
+<img src="docs/screenshots/04-multipage.png" alt="Multi-page answer" />
+
+Question 7 runs from page 2 onto page 3. Both regions highlight; the card is
+chipped `Pages 2, 3`.
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+**Unanswered, with the expected answer**
+
+<img src="docs/screenshots/05-unanswered.png" alt="Unanswered question" />
+
+Captioned *Written by AI · not the student's work*, so it can never be read as
 extracted handwriting.
 
-### Unmatched answers
+</td>
+<td width="50%" valign="top">
 
-<img src="docs/screenshots/06-unmatched.png" alt="Unmatched answers panel" />
+**Unmatched answers**
 
-An answer labelled `18` on a paper that stops at `12` does not disappear. It gets
-its own panel and its own highlight on the sheet.
+<img src="docs/screenshots/06-unmatched.png" alt="Unmatched answers" />
 
-### Responsive
+An answer labelled `18` on a paper stopping at `12` gets its own panel and its own
+highlight.
 
-<img src="docs/screenshots/07-mobile.png" alt="Mobile layout" width="380" />
+</td>
+</tr>
+</table>
 
-Below the desktop breakpoint the two panels become tabs. Desktop is the primary
-target and is untouched by this.
+<div align="center">
+<img src="docs/screenshots/07-mobile.png" alt="Mobile layout" width="300" />
+<br/>
+<sub>Below the desktop breakpoint the two panels become tabs.</sub>
+</div>
 
 ---
 
-## Approach
+## 3. Run it on your own PC
+
+### Prerequisites
+
+| | |
+|---|---|
+| **Node.js** | 20.9 or newer — check with `node -v` ([download](https://nodejs.org)) |
+| **npm** | Ships with Node — check with `npm -v` |
+| **An API key** | Optional. Without one the app runs on offline OCR |
+
+Works on macOS, Linux and Windows. No database, no Docker, no native build tools —
+PDF rendering is WebAssembly.
+
+### Step 1 — Get the code
+
+```bash
+git clone https://github.com/Ayush277/vedaai-assessment-mapper.git
+cd vedaai-assessment-mapper
+```
+
+### Step 2 — Install
+
+```bash
+npm install
+```
+
+### Step 3 — Configure
+
+```bash
+cp .env.example .env.local
+```
+
+Open `.env.local` and set your key:
+
+```ini
+AI_PROVIDER=gemini
+AI_API_KEY=your-key-here
+```
+
+> **No key?** Leave `AI_API_KEY` blank and the app runs on **Tesseract OCR**
+> locally — no key, no quota, no network. Printed question papers read well;
+> handwriting recognition is weaker, and the interface says so.
+
+<details>
+<summary><b>Where to get a free key</b></summary>
+
+<br/>
+
+**Google Gemini** (recommended — vision *and* embeddings on one key)
+1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
+2. **Create API key**
+3. Paste it into `AI_API_KEY`
+
+**Anthropic Claude** (alternative)
+1. Go to [console.anthropic.com](https://console.anthropic.com)
+2. Create a key, add a few dollars of credit
+3. Set `AI_PROVIDER=anthropic` and `AI_MODEL=claude-sonnet-5`
+
+</details>
+
+### Step 4 — Run
+
+```bash
+npm run dev
+```
+
+Open **<http://localhost:3000>**
+
+### Step 5 — Try it
+
+You need a question paper and an answer sheet. Two ways:
+
+**A. Generate sample papers**
+
+```bash
+npm run fixtures
+```
+
+Writes `fixtures/question-paper.pdf` and `fixtures/answer-sheet.pdf`. The answer
+sheet deliberately contains every hard case: answers out of order, a question
+skipped, an answer running from page 2 onto page 3, and an answer labelled `18`
+when the paper stops at `12`.
+
+**B. Skip uploading entirely**
+
+Visit **<http://localhost:3000/demo>** — a saved run of the real pipeline. Costs
+nothing, needs no key, always works.
+
+### All commands
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Development server with hot reload |
+| `npm run build` | Production build |
+| `npm start` | Serve the production build |
+| `npm test` | 137 unit tests |
+| `npm run typecheck` | `tsc --noEmit`, strict |
+| `npm run lint` | ESLint |
+| `npm run fixtures` | Generate the sample question paper and answer sheet |
+
+### Environment variables
+
+All optional. With nothing set, the app runs on offline OCR.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AI_PROVIDER` | `gemini` | `gemini`, `anthropic`, or `local` |
+| `AI_API_KEY` | *(empty)* | **Empty ⇒ falls back to `local`** |
+| `AI_MODEL` | per provider | Override the model |
+| `AI_EMBEDDING_MODEL` | `gemini-embedding-001` | Gemini only |
+| `ENABLE_GRADING` | `true` | `false` skips grading |
+| `MAX_UPLOAD_MB` | `10` | Per-file upload limit |
+| `MAX_PAGES_PER_DOCUMENT` | `12` | Caps runaway API cost |
+| `PROVIDER_MIN_INTERVAL_MS` | `3200` | Floor between provider calls. `0` on a paid tier |
+
+The key is read server-side only and never reaches the browser.
+
+### Troubleshooting
+
+<details>
+<summary><b>Port 3000 already in use</b></summary>
+
+<br/>
+
+The scripts honour `PORT`:
+
+```bash
+PORT=3001 npm run dev
+```
+
+</details>
+
+<details>
+<summary><b>"The AI service is rate limited"</b></summary>
+
+<br/>
+
+Gemini's free tier allows **20 requests/day per model**, and a five-page run costs
+roughly 8 — about two runs a day. Either wait for the daily reset, enable billing,
+or set `AI_PROVIDER=local` to work offline.
+
+The run falls back to local OCR automatically rather than failing outright.
+
+</details>
+
+<details>
+<summary><b>"No AI provider is configured" banner</b></summary>
+
+<br/>
+
+Expected when `AI_API_KEY` is blank — the app is on offline OCR. Add a key and
+restart to remove it.
+
+</details>
+
+<details>
+<summary><b>Slow first run on offline OCR</b></summary>
+
+<br/>
+
+Tesseract downloads its language data (~5 MB) on first use. Subsequent runs are
+fast.
+
+</details>
+
+---
+
+## 4. How it works
 
 ```
 upload (PDF / PNG / JPG)
@@ -126,16 +333,16 @@ projection profile to find text lines, then gap-based grouping into blocks. Each
 block is cropped, and only those crops go to the vision model to be read.
 
 Text and coordinates therefore describe the same pixels **by construction**, not
-by the model's spatial guesswork. A side effect worth noting: the coordinates are
-byte-identical whether the run used Gemini, Claude, or the offline Tesseract
-fallback, because the reader never touches them.
+by the model's spatial guesswork. A telling side effect: the coordinates come out
+byte-identical whether the run used Gemini, Claude or offline Tesseract, because
+the reader never touches them.
 
-### Mapping: deterministic first, AI last
+### Mapping — deterministic first, AI last
 
-Five signals in order of how much they can be trusted. A later step may only fill
-a gap an earlier one left — a model never overturns a label the student wrote.
+Five signals, ordered by how much they can be trusted. A later step may only fill
+a gap an earlier one left; a model never overturns a label the student wrote.
 
-| Step | Signal | Confidence |
+| # | Signal | Confidence |
 |---|---|---|
 | 1 | **Explicit label** — student wrote `11(b)`, paper has `11(b)` | `0.97` |
 | 2 | **Fuzzy label** — same-length digit substitution (`13` misread as `18`) | `0.72` |
@@ -143,52 +350,48 @@ a gap an earlier one left — a model never overturns a label the student wrote.
 | 4 | **Semantic similarity** — embeddings, else local TF-IDF | ≤ `0.70` |
 | 5 | **LLM reasoning** — only for what is still ambiguous | ≤ `0.78` |
 
-An answer whose written label matches *no* question is withheld from steps 4 and
-5 entirely and reported as unmatched. A student answering "18" on a paper
-numbered 1–12 must not be quietly attached to question 8.
+An answer whose written label matches *no* question is withheld from steps 4 and 5
+entirely and reported as unmatched. A student answering `18` on a paper numbered
+1–12 must not be quietly attached to question 8.
 
 ---
 
-## AI model / API
+## 5. AI model and API
 
-**Google Gemini** (`gemini-flash-latest`) for vision, `gemini-embedding-001` for
+**Google Gemini** — `gemini-flash-latest` for vision, `gemini-embedding-001` for
 semantic similarity.
 
 Chosen because it is the only widely available free tier offering vision *and*
 embeddings under one key, it handles handwriting well, and it accepts many images
-in a single request — which matters because the pipeline sends one request per
-page containing every region crop from that page.
+per request — which matters because the pipeline sends one request per page
+containing every region crop from that page.
 
-Three providers ship behind one interface (`lib/ai/provider.ts`):
+Three providers behind one interface (`lib/ai/provider.ts`):
 
 | `AI_PROVIDER` | Vision | Embeddings | Notes |
 |---|---|---|---|
 | `gemini` *(default)* | ✅ | ✅ | Recommended |
 | `anthropic` | ✅ | ➖ falls back to TF-IDF | Set `AI_MODEL=claude-sonnet-5` |
-| `local` | Tesseract.js | ➖ | **No API key needed.** Used automatically when `AI_API_KEY` is unset |
+| `local` | Tesseract.js | ➖ | **No key needed.** Automatic when `AI_API_KEY` is unset |
 
 `local` is a genuine fallback, not a stub: files flow through the whole pipeline
-and coordinates are still real. It reads printed question papers well and
-handwriting poorly, so those runs are marked degraded and the UI says so rather
-than presenting shaky output confidently.
+and coordinates are still real. Those runs are marked degraded and the UI says so
+rather than presenting shaky output confidently.
 
 **If the cloud provider gives out mid-run** — quota exhausted, key rejected — the
-pipeline falls back to local OCR and finishes, rather than ending on an error
-page. The result is marked degraded and the reason is stated.
+pipeline falls back to local OCR and finishes rather than ending on an error page.
 
-Adding a provider means one file in `lib/ai/providers/`. No other module imports
-a vendor SDK.
+Adding a provider means one file in `lib/ai/providers/`. No other module imports a
+vendor SDK.
 
 ---
 
-## Accuracy
+## 6. Accuracy
 
-Measured on the bundled fixture paper (14 questions, 4-page answer sheet)
-with Gemini. Reproduce with `npm run fixtures`.
+Measured on the bundled fixture paper — 14 questions, 4-page answer sheet — with
+Gemini. Reproduce with `npm run fixtures`.
 
-### Question extraction
-
-**14 / 14 correct.**
+### Question extraction — 14 / 14
 
 ```
 1 · 2 · 3 · 4 · 5 · 6 · 7 · 8 · 9 · 10 · 11 · 11 (a) · 11 (b) · 12
@@ -196,78 +399,69 @@ with Gemini. Reproduce with `npm run fixtures`.
 
 Labels preserved verbatim (`11 (a)`, not normalised to `11a`), marks and sections
 captured, page furniture ignored. Order comes from page number and vertical
-position — never from model output, so the paper can never be reordered by the AI.
+position — never from model output — so the AI cannot reorder the paper.
 
 Two questions sharing one OCR line are split apart; `= 22/7 x 7 x 7` is not.
 
-### Answer mapping
+### Answer mapping — 9 / 9, zero false matches
 
-**9 / 9 matched, all by explicit label at 0.97.** Zero false matches.
+All matched by explicit label at `0.97`.
 
-- The student wrote answers in the order 1, 3, 2 — all three landed on the right
+- Student wrote answers in the order **1, 3, 2** — all landed on the right
   questions, and the display order still followed the paper.
-- Questions 4, 6, 8, 10 and the stem 11 correctly reported unanswered.
-- The answer labelled `18` correctly reported unmatched.
+- Questions **4, 6, 8, 10** and the stem **11** correctly reported unanswered.
+- The answer labelled **18** correctly reported unmatched.
 
-### Highlighting
+### Highlighting — 13 regions, mean 5.8% of a page
 
-**13 regions, mean 5.8% of a page, largest 34.9%.** Never the whole page.
+Largest region 34.9%. Never the whole page. Coordinates are normalized 0–1 and
+rendered as CSS percentages, so a highlight stays pinned through window resizes
+and zoom — verified holding position at **200% zoom**.
 
-Coordinates are normalized 0–1 and rendered as CSS percentages, so a highlight
-stays pinned through window resizes and zoom. Verified holding position at
-**200% zoom**.
+### Why accuracy is shown as two numbers
 
-### Accuracy is shown as two numbers, not one
+"Accuracy" hides two different questions: how well the handwriting was *read*, and
+how sure we are it belongs to *this* question. A crisp answer matched by a guess
+and a smudged answer matched by an explicit label are both uncertain, for opposite
+reasons.
 
-"Accuracy" hides two different questions: how well the handwriting was *read*,
-and how sure we are it belongs to *this* question. A crisp answer matched by a
-guess and a smudged answer matched by an explicit label are both uncertain, for
-opposite reasons.
-
-A real example from a local-OCR run: **handwriting read 89%, match confidence
-72%** — the writing was legible, but OCR turned `11 (a)` into `10`, so the match
-is what needs checking, not the transcription. Every expanded question shows both.
+A real example from an offline-OCR run: **handwriting read 89%, match confidence
+72%** — the writing was legible, but OCR turned `11 (a)` into `10`, so the match is
+what needs checking, not the transcription. Every expanded question shows both.
 
 ---
 
-## Edge cases
+## 7. Edge cases
 
-Each of these was generated as a fixture and run through the real pipeline.
+Each generated as a fixture and run through the real pipeline.
 
 | Case | Behaviour |
 |---|---|
 | Answers written out of order | Mapped correctly; display order follows the paper |
-| Question skipped entirely | `Unanswered`, no answer invented or borrowed |
+| Question skipped entirely | `Unanswered`; no answer invented or borrowed |
 | Answer labelled for a question that does not exist | Own `Unmatched` panel, clickable to its region |
 | Answer spanning a page break | One answer, both regions highlighted, chipped `Pages 2, 3` |
-| Sub-parts `11 (a)` / `11 (b)` | Separate entries, indented under `11`, chipped `Part of 11` |
+| Sub-parts `11 (a)` / `11 (b)` | Separate entries, indented, chipped `Part of 11` |
 | Closing bracket lost by OCR (`11 (b`) | Still resolves to `11b` instead of collapsing onto the parent |
 | Crossed-out answer | Ignored, and counted in the processing notes |
-| **1 question**, 432-char question, 2035-char answer over 2 pages | No overflow; the long answer scrolls inside its card |
+| **1 question** — 432-char question, 2035-char answer over 2 pages | No overflow; the long answer scrolls inside its card |
 | **40 questions**, 39 unanswered | All render; panel scrolls 5308px with the filter bar pinned |
 | Blank page in the answer sheet | Reported as a processing note |
 | Repeated selection of the same question | Re-centres the sheet on it |
-| Rapid switching between questions | Lands on the last one clicked, exactly one selected |
-| Extraction failure / empty document / corrupt PDF | Named error with a retry, never a stack trace |
-| Provider quota exhausted mid-run | Falls back to local OCR and finishes, marked degraded |
-| Server dies mid-job | Client detects the stall and offers a retry rather than spinning forever |
+| Rapid switching between questions | Lands on the last clicked; exactly one selected |
+| Extraction failure / empty / corrupt PDF | Named error with a retry, never a stack trace |
+| Provider quota exhausted mid-run | Falls back to offline OCR and finishes, marked degraded |
+| Server dies mid-job | Client detects the stall and offers a retry rather than spinning |
 
 ---
 
-## Quality of implementation
+## 8. Implementation quality
 
 **137 tests** over the logic that decides correctness — label parsing, question
 extraction, answer segmentation, mapping, coordinate rendering, computer vision,
-provider parsing, error classification, and degradation reporting.
+provider parsing, error classification and degradation reporting.
 
-```bash
-npm test          # 137 tests
-npm run typecheck # tsc --noEmit, strict
-npm run lint      # eslint
-npm run build
-```
-
-Some things worth knowing if you read the code:
+Five things worth knowing before reading the code:
 
 - **No `any`.** Strict TypeScript throughout; the domain model lives in one file
   (`lib/types/assessment.ts`).
@@ -280,8 +474,6 @@ Some things worth knowing if you read the code:
 - **Scroll offsets come from `getBoundingClientRect`, not `offsetTop`.** The results
   panel animates in on mount, and that transform changes what `offsetParent`
   resolves to.
-- **Each page reserves its box with `aspect-ratio`,** so a scroll requested during
-  the first paint measures a real height rather than a collapsed one.
 - **Errors are classified once.** Timeouts, dropped connections, rate limits and
   rejected keys all become typed `ProviderError`s, so retry policy and user-facing
   copy are decided in one place. No provider body or stack trace reaches the browser.
@@ -290,76 +482,29 @@ Some things worth knowing if you read the code:
 
 Deterministic work happens before any paid call: PDF rasterisation, ink
 segmentation, label parsing and label matching are all local. The AI structuring
-pass is **skipped entirely** when the printed numbering already came out clean — a
-contiguous run from 1 with real text needs no second opinion. Region crops are
-batched twelve to a request, requests are serialised and paced, unanswered
-questions score zero without an LLM call, and grading is one batched request for
-the whole paper.
+pass is **skipped entirely** when the printed numbering already came out clean.
+Region crops are batched twelve to a request, requests are serialised and paced,
+unanswered questions score zero without an LLM call, and grading is one batched
+request for the whole paper.
 
----
+### Product decisions
 
-## Product experience
-
-- **Progress is real.** Nine stages driven by the backend's actual position, not a
-  timer. A retrying request says *"retrying 4/5 — provider overloaded, waiting
-  48s"* rather than appearing frozen.
-- **Nothing looks clickable and does nothing.** The wider VedaAI navigation from the
-  design is drawn but disabled, lock-marked, and explains itself on hover, focus
-  and tap.
-- **Uncertainty is visible.** Confidence bands, a *needs review* state, and a
+- **Progress is real** — nine stages driven by the backend's actual position, not a
+  timer. A retrying request says *"retrying 4/5 — provider overloaded, waiting 48s"*
+  rather than appearing frozen.
+- **Nothing looks clickable and does nothing** — navigation from the design that is
+  outside this build is drawn but disabled, lock-marked, and explains itself.
+- **Uncertainty is visible** — confidence bands, a *needs review* state, and a
   "How this was matched" note listing the signals used.
-- **Degraded runs say so.** An exhausted quota, a rejected key and an unconfigured
-  provider produce three different explanations rather than three identical blanks.
-- **Keyboard navigable.** ↑/↓ move through questions, `Esc` clears the selection,
-  every control is a real button with a label.
+- **Degraded runs say so** — an exhausted quota, a rejected key and an unconfigured
+  provider produce three different explanations, not three identical blanks.
+- **Keyboard navigable** — ↑/↓ move through questions, `Esc` clears the selection.
 
 ---
 
-## Run it locally
+## 9. Tech stack and structure
 
-```bash
-npm install
-cp .env.example .env.local     # add a key, or leave blank for local OCR
-npm run dev
-```
-
-Open <http://localhost:3000>.
-
-### Try it without your own papers
-
-```bash
-npm run fixtures
-```
-
-Writes `fixtures/question-paper.pdf` and `fixtures/answer-sheet.pdf`. The answer
-sheet deliberately contains the hard cases: answers out of order, a question
-skipped, an answer running from page 2 onto page 3, and an answer labelled `18`
-when the paper stops at `12`.
-
-Or visit **`/demo`** — a saved run of the real pipeline that costs nothing to view.
-
-### Environment variables
-
-All optional; with nothing set the app runs on local OCR.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `AI_PROVIDER` | `gemini` | `gemini`, `anthropic`, or `local` |
-| `AI_API_KEY` | *(empty)* | **Empty ⇒ falls back to `local`** |
-| `AI_MODEL` | per provider | Override the model |
-| `AI_EMBEDDING_MODEL` | `gemini-embedding-001` | Gemini only |
-| `ENABLE_GRADING` | `true` | Set `false` to skip grading |
-| `MAX_UPLOAD_MB` | `10` | Per-file upload limit |
-| `MAX_PAGES_PER_DOCUMENT` | `12` | Caps runaway API cost |
-| `PROVIDER_MIN_INTERVAL_MS` | `3200` | Floor between provider calls. `0` on a paid tier |
-
-The key is read server-side only and never reaches the browser.
-
----
-
-## Tech stack
-
-| | |
+| Layer | Choice |
 |---|---|
 | **Framework** | Next.js 15 (App Router), React 19, TypeScript (strict) |
 | **Styling** | Tailwind CSS v4, design tokens taken from the Figma |
@@ -369,8 +514,6 @@ The key is read server-side only and never reaches the browser.
 | **Computer vision** | Hand-written: adaptive threshold, projection profiles, block grouping |
 | **Tests** | Vitest |
 | **State** | In-memory + disk-backed job store. No database, no authentication |
-
-### Project structure
 
 ```
 src/
@@ -398,21 +541,21 @@ scripts/
 
 ---
 
-## Deployment
+## 10. Deployment
 
-Standard Next.js 15, no database, no authentication. Everything heavy is WASM or
+Standard Next.js 15 — no database, no authentication. Everything heavy is WASM or
 pure JS, so there are no native system libraries to install.
 
-**Vercel**
+### Vercel
 
 1. Import the repository.
-2. Add `AI_PROVIDER` and `AI_API_KEY` under Settings → Environment Variables.
+2. Add `AI_PROVIDER` and `AI_API_KEY` under **Settings → Environment Variables**.
 3. Deploy.
 
 `POST /api/process` declares `maxDuration = 300` and continues the pipeline in
 `after()`, which keeps the function alive past the response.
 
-**Any Node host** (Render, Railway, Fly, a VM)
+### Any Node host — Render, Railway, Fly, a VM
 
 ```bash
 npm ci && npm run build && npm start
@@ -421,41 +564,42 @@ npm ci && npm run build && npm start
 A long-running Node process is the better fit: no execution ceiling, and jobs stay
 on one instance.
 
-**Job storage.** Jobs and rendered pages live under `os.tmpdir()/vedaai-jobs/<jobId>/`,
-written atomically and swept after an hour. No database, works on serverless and
-on a VM, and survives the module reloads that would drop an in-memory map. It is
+### Job storage
+
+Jobs and rendered pages live under `os.tmpdir()/vedaai-jobs/<jobId>/`, written
+atomically and swept after an hour. No database, works on serverless and on a VM,
+and survives the module reloads that would drop an in-memory map. It is
 instance-local, so a multi-instance deployment wants a sticky session — or swap
 `lib/processing/job-store.ts`, the only module that touches persistence.
 
 ---
 
-## Assumptions &amp; limitations
+## 11. Assumptions and limitations
 
-Real ones, and the app is built to show them rather than hide them.
+Real ones. The app is built to show them rather than hide them.
 
-- **Handwriting quality is the ceiling.** Faint pencil, heavy slant, cramped
-  spacing or a low-resolution scan all degrade transcription. Low-confidence
-  answers are flagged, not silently trusted.
-- **Answers with no label and no distinctive content may stay unmatched.** This is
-  deliberate: the app leaves a question unanswered rather than guessing.
+- **Handwriting quality is the ceiling.** Faint pencil, heavy slant, cramped spacing
+  or a low-resolution scan all degrade transcription. Low-confidence answers are
+  flagged, not silently trusted.
+- **Answers with no label and no distinctive content may stay unmatched.** Deliberate:
+  the app leaves a question unanswered rather than guessing.
 - **Complex layouts** — multi-column papers, dense tables, questions boxed inside
   graphics — can confuse the projection-profile segmenter, which assumes roughly
   horizontal lines of text.
 - **Diagrams are described, not understood.** A drawn answer is transcribed as
   `[diagram of …]` and highlighted correctly, but grading it is unreliable.
 - **Rotated or badly skewed scans are not deskewed.** Pages are EXIF-rotated only.
-- **Free-tier quotas are small.** Gemini allows **20 requests/day per model**, and a
-  five-page run costs roughly 8 — about two full runs a day. Rate limits surface as
-  a clear, retryable error, and the run falls back to local OCR rather than failing.
-  Enable billing or use a second project for anything beyond light testing.
+- **Free-tier quotas are small.** Gemini allows 20 requests/day per model; a
+  five-page run costs roughly 8 — about two runs a day. Enable billing or use a
+  second project for anything beyond light testing.
 - **Grading is secondary by design.** One batched call, degrades to "unavailable"
   without failing the run, and anything the mapper flagged for review is flagged in
   the grade too.
-- **Assumes one student per answer sheet**, and that questions are numbered. An
-  unnumbered paper produces a clear error rather than a guess.
+- **One student per answer sheet**, and questions must be numbered. An unnumbered
+  paper produces a clear error rather than a guess.
 
 ---
 
 <div align="center">
-<sub>Built by <a href="https://github.com/Ayush277">Ayush Kumar</a></sub>
+<sub>Built by <a href="https://github.com/Ayush277">Ayush Kumar</a> · VedaAI hiring assignment</sub>
 </div>
