@@ -11,11 +11,13 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
+import type { ReviewEdit } from "@/lib/types/assessment";
 import type { QuestionRow } from "@/lib/view-model";
 import { confidenceLabel } from "@/lib/view-model";
 import { StatusPill } from "./StatusPill";
 import { EvaluationBadge } from "./EvaluationBadge";
 import { AccuracyMeter } from "./AccuracyMeter";
+import { MarkEditor } from "./MarkEditor";
 
 export function QuestionCard({
   row,
@@ -23,12 +25,18 @@ export function QuestionCard({
   expanded,
   onSelect,
   onToggleExpand,
+  edit,
+  onEdit,
+  onRevert,
 }: {
   row: QuestionRow;
   selected: boolean;
   expanded: boolean;
   onSelect: () => void;
   onToggleExpand: () => void;
+  edit?: ReviewEdit;
+  onEdit?: (next: ReviewEdit) => void;
+  onRevert?: () => void;
 }) {
   const {
     question,
@@ -68,7 +76,9 @@ export function QuestionCard({
           "rounded-card border bg-surface transition-all duration-200",
           selected
             ? "border-brand shadow-[0_0_0_1px_var(--color-brand)]"
-            : "border-line hover:border-line-strong hover:shadow-sm",
+            : row.isEdited
+              ? "border-brand/35 hover:border-brand/60 hover:shadow-sm"
+              : "border-line hover:border-line-strong hover:shadow-sm",
         )}
       >
         <div className="flex items-start gap-3 p-3">
@@ -263,6 +273,15 @@ export function QuestionCard({
                   </p>
                 ) : null}
               </div>
+            ) : null}
+
+            {row.grade && onEdit && onRevert ? (
+              <MarkEditor
+                row={row}
+                edit={edit}
+                onChange={onEdit}
+                onRevert={onRevert}
+              />
             ) : null}
 
             {mapping.reasons.length > 0 ? (

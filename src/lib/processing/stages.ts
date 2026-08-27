@@ -8,7 +8,7 @@ const STAGE_LABELS: Record<PipelineStage, string> = {
   uploading: "Uploading files",
   "reading-question-paper": "Reading question paper",
   "detecting-questions": "Detecting questions",
-  "reading-answer-sheet": "Reading answer sheet",
+  "reading-answer-sheet": "Reading answer sheets",
   "detecting-answers": "Detecting handwritten answers",
   mapping: "Mapping answers to questions",
   "checking-unanswered": "Checking unanswered questions",

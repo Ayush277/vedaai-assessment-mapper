@@ -24,6 +24,7 @@ import { transcribeDocument } from "@/lib/vision/transcribe";
 import { extractQuestions } from "@/lib/extraction/questions";
 import { extractAnswers } from "@/lib/extraction/answers";
 import { mapAnswersToQuestions } from "@/lib/mapping/mapper";
+import { studentIdFor, studentNameFromFile } from "@/lib/students";
 import type {
   AssessmentResult,
   Degradation,
@@ -34,6 +35,7 @@ import type {
   PipelineStage,
   ResultSummary,
   SourceDocument,
+  StudentResult,
   StageProgress,
 } from "@/lib/types/assessment";
 import { initialStages } from "./stages";
@@ -285,11 +287,12 @@ export function toJobError(error: unknown, stage: PipelineStage): JobError {
 
 export async function runPipeline(params: {
   questionPaper: UploadInput;
-  answerSheet: UploadInput;
+  /** One entry per student. Every sheet is read against the same paper. */
+  answerSheets: UploadInput[];
   /** Called on every stage transition so the caller can stream progress. */
   onProgress: (record: JobRecord) => void;
 }): Promise<JobRecord> {
-  const { questionPaper, answerSheet, onProgress } = params;
+  const { questionPaper, answerSheets, onProgress } = params;
   const jobId = createJobId();
   const includeGrading = config.gradingEnabled;
   const tracker = new StageTracker(jobId, includeGrading, onProgress);
@@ -361,34 +364,17 @@ export async function runPipeline(params: {
       bytes: questionPaper.bytes,
       jobId,
     });
-    const sheet = await normalizeDocument({
-      kind: "answer-sheet",
-      fileName: answerSheet.fileName,
-      mimeType: answerSheet.mimeType,
-      bytes: answerSheet.bytes,
-      jobId,
-    });
-
-    // Inline the rendered pages. A separate image endpoint would have to read
-    // them back from wherever the run happened, which is the same cross-instance
-    // problem in a different shape.
     inlinePageImages(paper.document, paper.bitmaps);
-    inlinePageImages(sheet.document, sheet.bitmaps);
 
     if (paper.document.pageCount > paper.bitmaps.length) {
       warnings.push(
         `Only the first ${paper.bitmaps.length} of ${paper.document.pageCount} question paper pages were processed.`,
       );
     }
-    if (sheet.document.pageCount > sheet.bitmaps.length) {
-      warnings.push(
-        `Only the first ${sheet.bitmaps.length} of ${sheet.document.pageCount} answer sheet pages were processed.`,
-      );
-    }
 
     await tracker.complete(
       "uploading",
-      `${paper.bitmaps.length + sheet.bitmaps.length} page(s) prepared`,
+      `${answerSheets.length} student sheet(s) queued`,
     );
 
     /* -------------------------- Question paper ------------------------- */
@@ -437,145 +423,228 @@ export async function runPipeline(params: {
       `${questionResult.questions.length} question(s) found`,
     );
 
-    /* --------------------------- Answer sheet -------------------------- */
-    stage = "reading-answer-sheet";
-    await tracker.begin(stage, `Page 1 of ${sheet.bitmaps.length}`);
+    /* --------------------------- Each student -------------------------- */
+    const students: StudentResult[] = [];
 
-    const sheetTranscript = await transcribeWithFallback({
-      bitmaps: sheet.bitmaps,
-      mode: "handwritten",
-      vision: providers.vision,
-      onPageStart: (pageNumber, total) => {
-        void tracker.detail("reading-answer-sheet", `Page ${pageNumber} of ${total}`);
-      },
-      onPageNote: (pageNumber, total, note) => {
-        void tracker.detail(
-          "reading-answer-sheet",
-          `Page ${pageNumber} of ${total} · ${note}`,
-        );
-      },
-    });
-    await tracker.complete(stage, `${sheetTranscript.blocks.length} region(s) read`);
+    for (const [index, upload] of answerSheets.entries()) {
+      const position = `Student ${index + 1} of ${answerSheets.length}`;
+      const name = studentNameFromFile(upload.fileName, index);
+      const id = studentIdFor(index);
 
-    stage = "detecting-answers";
-    await tracker.begin(stage);
-    const answerResult = extractAnswers(sheetTranscript);
-    warnings.push(...answerResult.warnings);
-
-    if (answerResult.answers.length === 0) {
-      await tracker.fail(
-        {
-          code: "ANSWER_EXTRACTION_FAILED",
-          message:
-            "Could not reliably read the answer sheet. No handwritten answers were detected.",
-          retryable: true,
-        },
-        stage,
-      );
-      return tracker.snapshot;
-    }
-    await tracker.complete(stage, `${answerResult.answers.length} answer(s) found`);
-
-    /* ------------------------------ Mapping ---------------------------- */
-    stage = "mapping";
-    await tracker.begin(stage);
-    const mappingResult = await mapAnswersToQuestions(
-      questionResult.questions,
-      answerResult.answers,
-      { embeddings: providers.embeddings, reasoning: providers.reasoning },
-    );
-    degradations.push(...mappingResult.degradations);
-    await tracker.complete(
-      stage,
-      `Matched using ${mappingResult.similarityMethod === "embedding" ? "embeddings" : "text similarity"}`,
-    );
-
-    stage = "checking-unanswered";
-    await tracker.begin(stage);
-    const summary: ResultSummary = {
-      totalQuestions: questionResult.questions.length,
-      answered: mappingResult.mappings.filter((m) => m.status === "matched").length,
-      unanswered: mappingResult.mappings.filter((m) => m.status === "unanswered")
-        .length,
-      needsReview: mappingResult.mappings.filter((m) => m.status === "needs_review")
-        .length,
-      unmatchedAnswers: mappingResult.unmatchedAnswerIds.length,
-    };
-    if (summary.needsReview > 0) {
-      warnings.push(
-        `${summary.needsReview} answer(s) need review before you rely on the match.`,
-      );
-    }
-    await tracker.complete(
-      stage,
-      `${summary.unanswered} unanswered, ${summary.unmatchedAnswers} unmatched`,
-    );
-
-    /* ------------------------------ Grading ---------------------------- */
-    let grading: GradingResult | null = null;
-    let modelAnswers: ModelAnswer[] | undefined;
-    if (includeGrading) {
-      stage = "grading";
-      await tracker.begin(stage);
-
-      let outcome: GradingOutcome;
       try {
-        outcome = await gradeAssessment({
-          questions: questionResult.questions,
+        stage = "reading-answer-sheet";
+        await tracker.begin(stage, `${position} · ${name}`);
+
+        const sheet = await normalizeDocument({
+          kind: "answer-sheet",
+          fileName: upload.fileName,
+          mimeType: upload.mimeType,
+          bytes: upload.bytes,
+          jobId,
+        });
+        inlinePageImages(sheet.document, sheet.bitmaps);
+
+        const studentWarnings: string[] = [];
+        if (sheet.document.pageCount > sheet.bitmaps.length) {
+          studentWarnings.push(
+            `Only the first ${sheet.bitmaps.length} of ${sheet.document.pageCount} pages were processed.`,
+          );
+        }
+
+        const sheetTranscript = await transcribeWithFallback({
+          bitmaps: sheet.bitmaps,
+          mode: "handwritten",
+          vision: providers.vision,
+          onPageStart: (pageNumber, total) => {
+            void tracker.detail(
+              "reading-answer-sheet",
+              `${position} · ${name} · page ${pageNumber} of ${total}`,
+            );
+          },
+          onPageNote: (pageNumber, total, note) => {
+            void tracker.detail(
+              "reading-answer-sheet",
+              `${position} · ${name} · page ${pageNumber} of ${total} · ${note}`,
+            );
+          },
+        });
+
+        stage = "detecting-answers";
+        await tracker.begin(stage, `${position} · ${name}`);
+        const answerResult = extractAnswers(sheetTranscript);
+        studentWarnings.push(...answerResult.warnings);
+
+        if (answerResult.answers.length === 0) {
+          students.push({
+            id,
+            name,
+            fileName: upload.fileName,
+            answerSheet: sheet.document,
+            answers: [],
+            mappings: questionResult.questions.map((question) => ({
+              questionId: question.id,
+              confidence: 0,
+              band: "none" as const,
+              status: "unanswered" as const,
+              methods: [],
+              reasons: ["No handwritten answers were detected on this sheet."],
+            })),
+            unmatchedAnswerIds: [],
+            summary: {
+              totalQuestions: questionResult.questions.length,
+              answered: 0,
+              unanswered: questionResult.questions.length,
+              needsReview: 0,
+              unmatchedAnswers: 0,
+            },
+            warnings: studentWarnings,
+            degradations: [],
+            error: {
+              code: "ANSWER_EXTRACTION_FAILED",
+              message:
+                "No handwritten answers were detected on this sheet. Check that the scan is clear.",
+              retryable: true,
+            },
+          });
+          continue;
+        }
+
+        stage = "mapping";
+        await tracker.begin(stage, `${position} · ${name}`);
+        const mappingResult = await mapAnswersToQuestions(
+          questionResult.questions,
+          answerResult.answers,
+          { embeddings: providers.embeddings, reasoning: providers.reasoning },
+        );
+        const studentDegradations = [...mappingResult.degradations];
+
+        stage = "checking-unanswered";
+        await tracker.begin(stage, `${position} · ${name}`);
+        const summary: ResultSummary = {
+          totalQuestions: questionResult.questions.length,
+          answered: mappingResult.mappings.filter((m) => m.status === "matched")
+            .length,
+          unanswered: mappingResult.mappings.filter((m) => m.status === "unanswered")
+            .length,
+          needsReview: mappingResult.mappings.filter(
+            (m) => m.status === "needs_review",
+          ).length,
+          unmatchedAnswers: mappingResult.unmatchedAnswerIds.length,
+        };
+        if (summary.needsReview > 0) {
+          studentWarnings.push(
+            `${summary.needsReview} answer(s) need review before you rely on the match.`,
+          );
+        }
+
+        let grading: GradingResult | null = null;
+        let modelAnswers: ModelAnswer[] | undefined;
+
+        if (includeGrading) {
+          stage = "grading";
+          await tracker.begin(stage, `${position} · ${name}`);
+
+          let outcome: GradingOutcome;
+          try {
+            outcome = await gradeAssessment({
+              questions: questionResult.questions,
+              answers: answerResult.answers,
+              mappings: mappingResult.mappings,
+              reasoning: providers.reasoning,
+            });
+          } catch (error) {
+            console.warn(`[pipeline ${jobId}] grading failed for ${name}:`, error);
+            outcome = { ok: false, kind: classifyDegradation(error) };
+          }
+
+          if (outcome.ok) {
+            grading = outcome.result;
+          } else {
+            studentDegradations.push({
+              step: "grading",
+              kind: outcome.kind,
+              message: describeDegradation(outcome.kind, "grading"),
+            });
+          }
+
+          try {
+            const expected = await generateModelAnswers({
+              questions: questionResult.questions,
+              mappings: mappingResult.mappings,
+              reasoning: providers.reasoning,
+            });
+            if (expected.ok) modelAnswers = expected.answers;
+            else
+              studentDegradations.push({
+                step: "model-answers",
+                kind: expected.kind,
+                message: describeDegradation(
+                  expected.kind,
+                  "writing expected answers for the unanswered questions",
+                ),
+              });
+          } catch (error) {
+            console.warn(`[pipeline ${jobId}] model answers failed for ${name}:`, error);
+          }
+        }
+
+        students.push({
+          id,
+          name,
+          fileName: upload.fileName,
+          answerSheet: sheet.document,
           answers: answerResult.answers,
           mappings: mappingResult.mappings,
-          reasoning: providers.reasoning,
+          unmatchedAnswerIds: mappingResult.unmatchedAnswerIds,
+          summary,
+          grades: grading?.grades,
+          gradingSummary: grading?.summary,
+          modelAnswers,
+          warnings: [...new Set(studentWarnings)],
+          degradations: dedupeDegradations(studentDegradations),
         });
       } catch (error) {
-        console.warn(`[pipeline ${jobId}] grading failed:`, error);
-        outcome = { ok: false, kind: classifyDegradation(error) };
-      }
-
-      if (outcome.ok) {
-        grading = outcome.result;
-        await tracker.complete(
-          stage,
-          `${grading.summary.marksObtained}/${grading.summary.maxMarks} marks`,
-        );
-      } else {
-        // Missing scores with no explanation read as a bug rather than a
-        // degraded run, so the specific cause is carried to the results screen.
-        const message = describeDegradation(outcome.kind, "grading");
-        degradations.push({ step: "grading", kind: outcome.kind, message });
-        await tracker.skip(stage, "Grading unavailable for this run");
-      }
-
-      // Write out what the skipped questions should have said. Same provider,
-      // one more batched call, and only for questions with no answer at all.
-      try {
-        const expected = await generateModelAnswers({
-          questions: questionResult.questions,
-          mappings: mappingResult.mappings,
-          reasoning: providers.reasoning,
-        });
-        if (expected.ok) {
-          modelAnswers = expected.answers;
-        } else {
-          degradations.push({
-            step: "model-answers",
-            kind: expected.kind,
-            message: describeDegradation(
-              expected.kind,
-              "writing expected answers for the unanswered questions",
-            ),
-          });
-        }
-      } catch (error) {
-        console.warn(`[pipeline ${jobId}] model answers failed:`, error);
-        degradations.push({
-          step: "model-answers",
-          kind: classifyDegradation(error),
-          message: describeDegradation(
-            classifyDegradation(error),
-            "writing expected answers for the unanswered questions",
-          ),
+        // One bad scan must not discard the students already processed.
+        console.error(`[pipeline ${jobId}] ${name} failed:`, error);
+        students.push({
+          id,
+          name,
+          fileName: upload.fileName,
+          answerSheet: {
+            kind: "answer-sheet",
+            fileName: upload.fileName,
+            mimeType: upload.mimeType,
+            byteSize: upload.bytes.byteLength,
+            pageCount: 0,
+            pages: [],
+          },
+          answers: [],
+          mappings: [],
+          unmatchedAnswerIds: [],
+          summary: {
+            totalQuestions: questionResult.questions.length,
+            answered: 0,
+            unanswered: questionResult.questions.length,
+            needsReview: 0,
+            unmatchedAnswers: 0,
+          },
+          warnings: [],
+          degradations: [],
+          error: toJobError(error, stage),
         });
       }
+    }
+
+    if (students.every((student) => student.error)) {
+      await tracker.fail(
+        students[0]?.error ?? {
+          code: "ANSWER_EXTRACTION_FAILED",
+          message: "None of the uploaded answer sheets could be read.",
+          retryable: true,
+        },
+        "detecting-answers",
+      );
+      return tracker.snapshot;
     }
 
     /* ------------------------------ Result ----------------------------- */
@@ -590,21 +659,19 @@ export async function runPipeline(params: {
       );
     }
 
+    const failed = students.filter((student) => student.error).length;
+    if (failed > 0 && failed < students.length) {
+      warnings.push(
+        `${failed} of ${students.length} answer sheet(s) could not be read. The rest were processed normally.`,
+      );
+    }
+
     const result: AssessmentResult = {
       jobId,
       questionPaper: paper.document,
-      answerSheet: sheet.document,
       questions: questionResult.questions,
-      answers: answerResult.answers,
-      mappings: mappingResult.mappings,
-      unmatchedAnswerIds: mappingResult.unmatchedAnswerIds,
-      summary,
-      grades: grading?.grades,
-      gradingSummary: grading?.summary,
-      modelAnswers,
+      students,
       warnings: [...new Set(warnings)],
-      // De-duplicated by step: one quota exhaustion knocks out several optional
-      // steps, and repeating the same sentence three times helps nobody.
       degradations: dedupeDegradations(degradations),
       provider: {
         id: usedFallback ? "local" : providers.vision.id,

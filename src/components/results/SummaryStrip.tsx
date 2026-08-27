@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { AssessmentResult } from "@/lib/types/assessment";
+import type { ResultSummary } from "@/lib/types/assessment";
 
 function Stat({
   label,
@@ -29,9 +29,7 @@ function Stat({
   );
 }
 
-export function SummaryStrip({ result }: { result: AssessmentResult }) {
-  const { summary, gradingSummary } = result;
-
+export function SummaryStrip({ summary }: { summary: ResultSummary }) {
   return (
     <div className="flex flex-wrap items-stretch rounded-card border border-line bg-surface *:border-l *:border-line first:*:border-l-0">
       <Stat label="Questions" value={summary.totalQuestions} />
@@ -39,12 +37,6 @@ export function SummaryStrip({ result }: { result: AssessmentResult }) {
       <Stat label="Unanswered" value={summary.unanswered} tone="danger" />
       <Stat label="Needs review" value={summary.needsReview} tone="warn" />
       <Stat label="Unmatched" value={summary.unmatchedAnswers} tone="brand" />
-      {gradingSummary && gradingSummary.maxMarks > 0 ? (
-        <Stat
-          label={`Score · ${gradingSummary.percentage}%`}
-          value={`${gradingSummary.marksObtained}/${gradingSummary.maxMarks}`}
-        />
-      ) : null}
     </div>
   );
 }

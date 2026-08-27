@@ -9,12 +9,8 @@ export const dynamic = "force-dynamic";
 /** Rasterising and reading several scanned pages takes real time. */
 export const maxDuration = 300;
 
-type FieldName = "questionPaper" | "answerSheet";
-
-const FIELD_LABELS: Record<FieldName, string> = {
-  questionPaper: "a question paper",
-  answerSheet: "an answer sheet",
-};
+/** Upper bound on one batch, so a stray multi-select cannot start a huge run. */
+const MAX_STUDENTS = 20;
 
 function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: { message } }, { status });
@@ -41,33 +37,43 @@ export async function POST(request: Request) {
     return badRequest("The upload could not be read. Please try again.");
   }
 
-  const files: Partial<Record<FieldName, File>> = {};
-
-  for (const field of ["questionPaper", "answerSheet"] as FieldName[]) {
-    const value = form.get(field);
-    if (!value || typeof value === "string") {
-      return badRequest(`Please upload ${FIELD_LABELS[field]}.`);
-    }
-    try {
-      validateUpload({ name: value.name, type: value.type, size: value.size });
-    } catch (error) {
-      if (error instanceof DocumentError) return badRequest(error.message);
-      return badRequest(
-        `The ${FIELD_LABELS[field].replace(/^an? /, "")} could not be validated.`,
-      );
-    }
-    files[field] = value;
+  const paper = form.get("questionPaper");
+  if (!paper || typeof paper === "string") {
+    return badRequest("Please upload a question paper.");
+  }
+  try {
+    validateUpload({ name: paper.name, type: paper.type, size: paper.size });
+  } catch (error) {
+    if (error instanceof DocumentError) return badRequest(error.message);
+    return badRequest("The question paper could not be validated.");
   }
 
-  const questionPaper = files.questionPaper!;
-  const answerSheet = files.answerSheet!;
+  // One field, many files: a class is uploaded in a single go.
+  const sheets = form
+    .getAll("answerSheets")
+    .filter((value): value is File => typeof value !== "string" && value !== null);
 
-  const [paperBytes, sheetBytes] = await Promise.all([
-    questionPaper.arrayBuffer(),
-    answerSheet.arrayBuffer(),
-  ]);
+  if (sheets.length === 0) {
+    return badRequest("Please upload at least one student answer sheet.");
+  }
+  if (sheets.length > MAX_STUDENTS) {
+    return badRequest(
+      `That is ${sheets.length} answer sheets. Upload at most ${MAX_STUDENTS} at a time.`,
+    );
+  }
+  for (const sheet of sheets) {
+    try {
+      validateUpload({ name: sheet.name, type: sheet.type, size: sheet.size });
+    } catch (error) {
+      if (error instanceof DocumentError) return badRequest(error.message);
+      return badRequest(`"${sheet.name}" could not be validated.`);
+    }
+  }
 
-  if (paperBytes.byteLength === 0 || sheetBytes.byteLength === 0) {
+  const paperBytes = await paper.arrayBuffer();
+  const sheetBuffers = await Promise.all(sheets.map((s) => s.arrayBuffer()));
+
+  if (paperBytes.byteLength === 0 || sheetBuffers.some((b) => b.byteLength === 0)) {
     return badRequest("One of the uploaded files is empty.");
   }
 
@@ -94,15 +100,15 @@ export async function POST(request: Request) {
       try {
         const record = await runPipeline({
           questionPaper: {
-            fileName: questionPaper.name,
-            mimeType: questionPaper.type,
+            fileName: paper.name,
+            mimeType: paper.type,
             bytes: new Uint8Array(paperBytes),
           },
-          answerSheet: {
-            fileName: answerSheet.name,
-            mimeType: answerSheet.type,
-            bytes: new Uint8Array(sheetBytes),
-          },
+          answerSheets: sheets.map((sheet, index) => ({
+            fileName: sheet.name,
+            mimeType: sheet.type,
+            bytes: new Uint8Array(sheetBuffers[index]),
+          })),
           onProgress: sendStage,
         });
 

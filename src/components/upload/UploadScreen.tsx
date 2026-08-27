@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileDropZone } from "./FileDropZone";
 import { SelectedFileCard } from "./SelectedFileCard";
+import { StudentFileList } from "./StudentFileList";
 
-type Slot = "questionPaper" | "answerSheet";
+type Slot = "questionPaper";
 
 const ACCEPTED_EXTENSIONS = [".pdf", ".png", ".jpg", ".jpeg"];
 
@@ -38,11 +39,14 @@ export function UploadScreen({
   onStart: (body: FormData) => void;
 }) {
   const [files, setFiles] = useState<Partial<Record<Slot, File>>>({});
+  const [sheets, setSheets] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   const select = useCallback(
-    (slot: Slot, file: File) => {
+    (slot: Slot, picked: File[]) => {
+      const file = picked[0];
+      if (!file) return;
       const message = validate(file, maxUploadMb);
       if (message) {
         setError(message);
@@ -54,6 +58,34 @@ export function UploadScreen({
     [maxUploadMb],
   );
 
+  /** Add a batch of sheets, keeping what is already staged. */
+  const addSheets = useCallback(
+    (picked: File[]) => {
+      const rejected: string[] = [];
+      const accepted = picked.filter((file) => {
+        const message = validate(file, maxUploadMb);
+        if (message) rejected.push(message);
+        return !message;
+      });
+
+      setSheets((current) => {
+        // Re-picking the same file should not duplicate a student.
+        const seen = new Set(current.map((f) => `${f.name}:${f.size}`));
+        return [
+          ...current,
+          ...accepted.filter((f) => !seen.has(`${f.name}:${f.size}`)),
+        ];
+      });
+      setError(rejected[0] ?? null);
+    },
+    [maxUploadMb],
+  );
+
+  const removeSheet = useCallback((index: number) => {
+    setError(null);
+    setSheets((current) => current.filter((_, position) => position !== index));
+  }, []);
+
   const remove = useCallback((slot: Slot) => {
     setError(null);
     setFiles((current) => {
@@ -63,19 +95,19 @@ export function UploadScreen({
     });
   }, []);
 
-  const ready = Boolean(files.questionPaper && files.answerSheet);
+  const ready = Boolean(files.questionPaper) && sheets.length > 0;
 
   const submit = useCallback(() => {
-    if (!files.questionPaper || !files.answerSheet || submitting) return;
+    if (!files.questionPaper || sheets.length === 0 || submitting) return;
 
     setSubmitting(true);
     setError(null);
 
     const body = new FormData();
     body.append("questionPaper", files.questionPaper);
-    body.append("answerSheet", files.answerSheet);
+    for (const sheet of sheets) body.append("answerSheets", sheet);
     onStart(body);
-  }, [files, onStart, submitting]);
+  }, [files, sheets, onStart, submitting]);
 
   return (
     <div className="scrollbar-slim flex-1 overflow-y-auto">
@@ -121,27 +153,33 @@ export function UploadScreen({
               title="Upload"
               accentTitle="Question Paper"
               maxMb={maxUploadMb}
-              onSelect={(file) => select("questionPaper", file)}
+              onSelect={(picked) => select("questionPaper", picked)}
               disabled={submitting}
             />
           )}
 
-          {files.answerSheet ? (
-            <SelectedFileCard
-              file={files.answerSheet}
-              role="Student answer sheet"
-              onRemove={() => remove("answerSheet")}
-              disabled={submitting}
-            />
-          ) : (
-            <FileDropZone
-              title="Upload"
-              accentTitle="Answer Sheet"
-              maxMb={maxUploadMb}
-              onSelect={(file) => select("answerSheet", file)}
-              disabled={submitting}
-            />
-          )}
+          <FileDropZone
+            title="Upload"
+            accentTitle="Answer Sheets"
+            maxMb={maxUploadMb}
+            multiple
+            hint={
+              sheets.length > 0
+                ? `${sheets.length} student${sheets.length === 1 ? "" : "s"} staged · add more`
+                : `PDF, PNG or JPG · one file per student · select several at once`
+            }
+            onSelect={addSheets}
+            disabled={submitting}
+          />
+        </div>
+
+        <div className="mt-4 w-full">
+          <StudentFileList
+            files={sheets}
+            onRemove={removeSheet}
+            onClear={() => setSheets([])}
+            disabled={submitting}
+          />
         </div>
 
         {error ? (
@@ -166,15 +204,17 @@ export function UploadScreen({
             </>
           ) : (
             <>
-              Start Mapping <ArrowRight className="size-4" />
+              Start Mapping
+              {sheets.length > 1 ? ` · ${sheets.length} students` : ""}
+              <ArrowRight className="size-4" />
             </>
           )}
         </Button>
 
         <p className="mt-3 text-center text-xs text-muted">
           {ready
-            ? "Both files are ready. Processing takes about a minute per page."
-            : "Once both files are uploaded, you'll be able to map answers with questions"}
+            ? `Ready to evaluate ${sheets.length} student${sheets.length === 1 ? "" : "s"} against this paper.`
+            : "Upload a question paper and one answer sheet per student to get started"}
         </p>
 
         {localMode ? (

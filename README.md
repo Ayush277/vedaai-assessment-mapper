@@ -51,6 +51,11 @@ This app does that reconciliation, and shows its work.
 
 | Capability | Behaviour |
 |---|---|
+| **Whole class at once** | Upload one question paper and a sheet per student; each is evaluated against the same paper |
+| **Student switching** | Next/Previous or jump by name — sheet, marks, report and insights all follow |
+| **Evaluation report** | Beside the answer sheet, not on a separate page: score, band, tallies, strengths, areas to improve |
+| **Teacher review** | Edit any mark or feedback; the score, band and tallies move with it, and Revert restores the AI's original |
+| **Publish** | Publishes the teacher's final view, not the AI's first draft |
 | **Question extraction** | Every question in printed order, original numbering preserved |
 | **Sub-parts** | `11 (a)` and `11 (b)` are separate entries, indented under `11` |
 | **Handwriting extraction** | Read page by page, segmented into discrete answers |
@@ -237,7 +242,7 @@ nothing, needs no key, always works.
 | `npm run dev` | Development server with hot reload |
 | `npm run build` | Production build |
 | `npm start` | Serve the production build |
-| `npm test` | 137 unit tests |
+| `npm test` | 158 unit tests |
 | `npm run typecheck` | `tsc --noEmit`, strict |
 | `npm run lint` | ESLint |
 | `npm run fixtures` | Generate the sample question paper and answer sheet |
@@ -321,6 +326,29 @@ upload (PDF / PNG / JPG)
    ↓  lib/ai/grading    evaluate   → marks, feedback, expected answers
    ↓  AssessmentResult  → results viewer
 ```
+
+### One paper, many students
+
+Questions are extracted once and shared; each student's sheet is read, mapped and
+graded against that same list. A student is a `StudentResult` — sheet, answers,
+mappings, grades — and the question list lives on the assessment above them, so
+two students' copies cannot drift apart.
+
+One unreadable scan does not discard the batch: that student is kept with the
+reason attached, the rest process normally, and the switcher marks them.
+
+### Teacher review, and what "published" means
+
+An edit is stored *beside* the AI's grade, never over it. That is what lets the
+report say how much of a score is the teacher's, lets **Revert to AI** work
+without re-running anything, and lets the published set be the teacher's final
+view rather than the model's first draft.
+
+The score, band and tallies are recomputed from whichever grades are in force, so
+correcting one question moves the header with it — the report can never disagree
+with the questions below it. Publishing records what it covered; editing anything
+afterwards clears it, so the panel cannot claim to have published something since
+changed.
 
 ### The idea that makes highlighting accurate
 
@@ -531,7 +559,7 @@ src/
     mapping/     normalize-label, deterministic, semantic, mapper
     processing/  pipeline, stages
     types/       assessment.ts — the whole domain model
-  test/          137 tests
+  test/          158 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   make-edge-fixtures.mjs         one-question and 40-question papers

@@ -12,12 +12,17 @@ export function FileDropZone({
   maxMb,
   onSelect,
   disabled,
+  multiple = false,
+  hint,
 }: {
   title: string;
   accentTitle: string;
   maxMb: number;
-  onSelect: (file: File) => void;
+  onSelect: (files: File[]) => void;
   disabled?: boolean;
+  /** Answer sheets arrive a class at a time; the question paper does not. */
+  multiple?: boolean;
+  hint?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -25,10 +30,10 @@ export function FileDropZone({
 
   const handleFiles = useCallback(
     (files: FileList | null) => {
-      const file = files?.[0];
-      if (file) onSelect(file);
+      const picked = Array.from(files ?? []);
+      if (picked.length > 0) onSelect(multiple ? picked : picked.slice(0, 1));
     },
-    [onSelect],
+    [onSelect, multiple],
   );
 
   return (
@@ -65,7 +70,7 @@ export function FileDropZone({
           {title} <span className="text-brand">{accentTitle}</span>
         </span>
         <span id={describedBy} className="text-xs text-muted">
-          PDF, PNG or JPG · Max {maxMb}MB · Multi-page supported
+          {hint ?? `PDF, PNG or JPG · Max ${maxMb}MB · Multi-page supported`}
         </span>
       </button>
 
@@ -73,6 +78,7 @@ export function FileDropZone({
         ref={inputRef}
         type="file"
         accept={ACCEPT}
+        multiple={multiple}
         className="sr-only"
         tabIndex={-1}
         onChange={(event) => {

@@ -10,11 +10,18 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AnswerRegion, AssessmentResult } from "@/lib/types/assessment";
+import type {
+  AnswerRegion,
+  AssessmentResult,
+  PublishRecord,
+  ReviewEdit,
+  ReviewEdits,
+} from "@/lib/types/assessment";
 import {
   buildQuestionRows,
   filterRows,
   searchRows,
+  summariseGrades,
   unmatchedAnswers,
   type FilterKey,
   type QuestionRow,
@@ -26,7 +33,9 @@ import {
 import type { Highlight } from "@/components/answer-viewer/HighlightOverlay";
 import { QuestionCard } from "./QuestionCard";
 import { SummaryStrip } from "./SummaryStrip";
-import { GradingSummary } from "./GradingSummary";
+import { StudentSwitcher } from "./StudentSwitcher";
+import { EvaluationReport } from "./EvaluationReport";
+import { PublishPanel } from "./PublishPanel";
 import { UnmatchedPanel } from "./UnmatchedPanel";
 import { FilterTabs } from "./FilterTabs";
 import { DegradationNotice } from "./DegradationNotice";
@@ -43,12 +52,70 @@ export function ResultsScreen({
   result: AssessmentResult;
   onStartOver?: () => void;
 }) {
-  const rows = useMemo(() => buildQuestionRows(result), [result]);
-  const stray = useMemo(() => unmatchedAnswers(result), [result]);
+  const students = result.students;
+  const [studentId, setStudentId] = useState(students[0]?.id ?? "");
+  const studentIndex = Math.max(
+    0,
+    students.findIndex((entry) => entry.id === studentId),
+  );
+  const student = students[studentIndex];
+
+  /** studentId → questionId → edit. Kept beside the AI's grades, never over them. */
+  const [edits, setEdits] = useState<ReviewEdits>({});
+  const [published, setPublished] = useState<PublishRecord | null>(null);
+
+  // Memoised so the rows below are not rebuilt on every unrelated render.
+  const studentEdits = useMemo(
+    () => edits[student?.id ?? ""] ?? {},
+    [edits, student],
+  );
+  const rows = useMemo(
+    () => buildQuestionRows(result, student, studentEdits),
+    [result, student, studentEdits],
+  );
+  const liveSummary = useMemo(
+    () => summariseGrades(rows, student?.gradingSummary),
+    [rows, student],
+  );
+  const editedCount = rows.filter((row) => row.isEdited).length;
+  const stray = useMemo(() => unmatchedAnswers(student), [student]);
+
+  const applyEdit = useCallback(
+    (questionId: string, next: ReviewEdit) => {
+      if (!student) return;
+      setEdits((current) => ({
+        ...current,
+        [student.id]: { ...(current[student.id] ?? {}), [questionId]: next },
+      }));
+      // A published set is a snapshot; editing after it moves things on.
+      setPublished(null);
+    },
+    [student],
+  );
+
+  const revertEdit = useCallback(
+    (questionId: string) => {
+      if (!student) return;
+      setEdits((current) => {
+        const forStudent = { ...(current[student.id] ?? {}) };
+        delete forStudent[questionId];
+        return { ...current, [student.id]: forStudent };
+      });
+      setPublished(null);
+    },
+    [student],
+  );
 
   const [filter, setFilter] = useState<FilterKey>("all");
   const [query, setQuery] = useState("");
   const [selection, setSelection] = useState<Selection>(null);
+
+  const selectStudent = useCallback((nextId: string) => {
+    setStudentId(nextId);
+    // A question selected on one sheet means nothing on the next one.
+    setSelection(null);
+    setQuery("");
+  }, []);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [mobileTab, setMobileTab] = useState<"questions" | "sheet">("questions");
   const viewerRef = useRef<AnswerSheetViewerHandle>(null);
@@ -70,6 +137,7 @@ export function ResultsScreen({
       answered: rows.filter((row) => row.mapping.status === "matched").length,
       unanswered: rows.filter((row) => row.mapping.status === "unanswered").length,
       review: rows.filter((row) => row.mapping.status === "needs_review").length,
+      edited: rows.filter((row) => row.isEdited).length,
     }),
     [rows],
   );
@@ -252,9 +320,42 @@ export function ResultsScreen({
           </button>
         </div>
 
-        <SummaryStrip result={result} />
-        <GradingSummary result={result} rows={rows} />
-        <DegradationNotice degradations={result.degradations ?? []} />
+        {student ? (
+          <StudentSwitcher
+            students={students}
+            current={student}
+            index={studentIndex}
+            onSelect={selectStudent}
+            score={liveSummary}
+          />
+        ) : null}
+
+        {student ? <SummaryStrip summary={student.summary} /> : null}
+
+        {student ? (
+          <EvaluationReport
+            student={student}
+            rows={rows}
+            summary={liveSummary}
+            editedCount={editedCount}
+          />
+        ) : null}
+
+        {student ? (
+          <PublishPanel
+            students={students}
+            edits={edits}
+            published={published}
+            onPublish={setPublished}
+          />
+        ) : null}
+
+        <DegradationNotice
+          degradations={[
+            ...(result.degradations ?? []),
+            ...(student?.degradations ?? []),
+          ]}
+        />
 
         {result.provider.degraded ? (
           <p className="flex items-start gap-2 rounded-card border border-warn/25 bg-warn-soft px-3 py-2.5 text-[11px] leading-relaxed text-warn">
@@ -270,15 +371,16 @@ export function ResultsScreen({
           </p>
         ) : null}
 
-        {result.warnings.length > 0 ? (
+        {[...result.warnings, ...(student?.warnings ?? [])].length > 0 ? (
           <details className="rounded-card border border-warn/25 bg-warn-soft px-3 py-2.5">
             <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[12px] font-semibold text-warn">
               <AlertTriangle className="size-3.5" />
-              {result.warnings.length} processing note
-              {result.warnings.length === 1 ? "" : "s"}
+              {[...result.warnings, ...(student?.warnings ?? [])].length} processing
+              note
+              {[...result.warnings, ...(student?.warnings ?? [])].length === 1 ? "" : "s"}
             </summary>
             <ul className="mt-2 space-y-1 pl-5 text-[11px] leading-relaxed text-warn">
-              {result.warnings.map((warning) => (
+              {[...new Set([...result.warnings, ...(student?.warnings ?? [])])].map((warning) => (
                 <li key={warning} className="list-disc">
                   {warning}
                 </li>
@@ -338,6 +440,9 @@ export function ResultsScreen({
                   return next;
                 })
               }
+              edit={studentEdits[row.question.id]}
+              onEdit={(next) => applyEdit(row.question.id, next)}
+              onRevert={() => revertEdit(row.question.id)}
             />
           ))}
         </ul>
@@ -348,9 +453,15 @@ export function ResultsScreen({
   const viewerPanel = (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-card border border-line bg-surface">
       <AnswerSheetViewer
+        key={student?.id}
         ref={viewerRef}
-        pages={result.answerSheet.pages}
+        pages={student?.answerSheet.pages ?? []}
         highlights={highlights}
+        emptyMessage={
+          student?.error
+            ? student.error.message
+            : "No answer sheet pages are available for this student."
+        }
       />
       <SelectionNote
         selectedRow={selectedRow}

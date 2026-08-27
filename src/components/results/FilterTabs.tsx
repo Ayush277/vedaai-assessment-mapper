@@ -8,6 +8,7 @@ const TABS: { key: FilterKey; label: string }[] = [
   { key: "answered", label: "Answered" },
   { key: "unanswered", label: "Unanswered" },
   { key: "review", label: "Needs review" },
+  { key: "edited", label: "Edited" },
 ];
 
 export function FilterTabs({

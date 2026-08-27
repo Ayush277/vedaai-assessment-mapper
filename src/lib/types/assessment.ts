@@ -215,11 +215,19 @@ export type ResultSummary = {
   unmatchedAnswers: number;
 };
 
-export type AssessmentResult = {
-  jobId: string;
-  questionPaper: SourceDocument;
+/**
+ * One student's sheet, evaluated against the shared question paper.
+ *
+ * Questions live on the assessment rather than here: every student in a batch
+ * answers the same paper, and duplicating the question list per student would
+ * let two students' copies drift apart.
+ */
+export type StudentResult = {
+  id: string;
+  /** Display name, derived from the uploaded file name. */
+  name: string;
+  fileName: string;
   answerSheet: SourceDocument;
-  questions: Question[];
   answers: Answer[];
   mappings: AnswerMapping[];
   /** Answers that could not be linked to any question. */
@@ -229,9 +237,23 @@ export type AssessmentResult = {
   gradingSummary?: GradingSummary;
   /** Expected answers for the questions that were left unanswered. */
   modelAnswers?: ModelAnswer[];
-  /** Non-fatal problems worth surfacing, e.g. "page 3 had no readable text". */
   warnings: string[];
-  /** Optional AI steps that did not run, and why. */
+  degradations: Degradation[];
+  /**
+   * Set when this sheet alone failed. One unreadable scan must not discard the
+   * whole batch, so the student is kept with the reason attached.
+   */
+  error?: JobError;
+};
+
+export type AssessmentResult = {
+  jobId: string;
+  questionPaper: SourceDocument;
+  /** Shared across every student in the batch. */
+  questions: Question[];
+  students: StudentResult[];
+  /** Problems that affected the whole run rather than one student. */
+  warnings: string[];
   degradations: Degradation[];
   /** Which provider actually produced the extraction, for honest reporting. */
   provider: {
@@ -243,6 +265,33 @@ export type AssessmentResult = {
     localMode?: "chosen" | "no-key";
   };
   isDemo?: boolean;
+};
+
+/* -------------------------------------------------------------------------- */
+/*                               Teacher review                               */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A teacher's correction to one question's evaluation.
+ *
+ * Held separately from the AI's own output so the original is never
+ * overwritten: the report can always show what was changed, and a mistaken
+ * edit can be reverted without re-running anything.
+ */
+export type ReviewEdit = {
+  marksObtained?: number;
+  feedback?: string;
+};
+
+/** studentId -> questionId -> edit */
+export type ReviewEdits = Record<string, Record<string, ReviewEdit>>;
+
+export type PublishRecord = {
+  publishedAt: number;
+  /** Students included at the moment of publishing. */
+  studentIds: string[];
+  /** True when any mark or feedback was teacher-edited before publishing. */
+  includesTeacherEdits: boolean;
 };
 
 /* -------------------------------------------------------------------------- */

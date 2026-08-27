@@ -150,6 +150,17 @@
   }
 }
 
+@keyframes veda-swap-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @keyframes veda-highlight-in {
   from {
     box-shadow: 0 0 0 0 rgb(34 197 94 / 0.55);
@@ -173,6 +184,12 @@
 }
 
 /* Results arriving after extraction: one short rise, not a cascade. */
+/* Content swapping to another student: a short rise, fast enough to sit under
+   a teacher moving through a class in sequence. */
+.animate-veda-swap-in {
+  animation: veda-swap-in 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
 .animate-veda-fade-up {
   animation: veda-fade-up 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
@@ -209,6 +226,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-veda-pulse,
+  .animate-veda-swap-in,
   .animate-veda-highlight-in,
   .animate-veda-fade-up,
   .animate-veda-orbit,
