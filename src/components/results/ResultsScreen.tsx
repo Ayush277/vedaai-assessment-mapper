@@ -36,6 +36,7 @@ import { SummaryStrip } from "./SummaryStrip";
 import { StudentSwitcher } from "./StudentSwitcher";
 import { EvaluationReport } from "./EvaluationReport";
 import { PublishPanel } from "./PublishPanel";
+import { ExportReport } from "./ExportReport";
 import { UnmatchedPanel } from "./UnmatchedPanel";
 import { FilterTabs } from "./FilterTabs";
 import { DegradationNotice } from "./DegradationNotice";
@@ -338,6 +339,9 @@ export function ResultsScreen({
             rows={rows}
             summary={liveSummary}
             editedCount={editedCount}
+            actions={
+              <ExportReport result={result} student={student} edits={edits} />
+            }
           />
         ) : null}
 

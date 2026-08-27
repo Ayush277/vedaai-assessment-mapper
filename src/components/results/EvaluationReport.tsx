@@ -24,11 +24,14 @@ export function EvaluationReport({
   rows,
   summary,
   editedCount,
+  actions,
 }: {
   student: StudentResult;
   rows: QuestionRow[];
   summary?: GradingSummary;
   editedCount: number;
+  /** Export controls, rendered in the report header. */
+  actions?: React.ReactNode;
 }) {
   const graded = rows.filter((row) => row.grade);
 
@@ -45,6 +48,7 @@ export function EvaluationReport({
             "Automatic evaluation did not run for this student, so no marks were awarded."}{" "}
           Question extraction, answer mapping and highlighting are unaffected.
         </p>
+        {actions ? <div className="mt-2.5">{actions}</div> : null}
       </section>
     );
   }
@@ -59,10 +63,25 @@ export function EvaluationReport({
 
   const tone =
     summary.percentage >= 75
-      ? { text: "text-success-ink", ring: "stroke-success", bar: "bg-success" }
+      ? {
+          text: "text-success-ink",
+          ring: "stroke-success",
+          bar: "bg-success",
+          badge: "bg-success-soft text-success-ink",
+        }
       : summary.percentage >= 40
-        ? { text: "text-warn", ring: "stroke-warn", bar: "bg-warn" }
-        : { text: "text-danger-ink", ring: "stroke-danger", bar: "bg-danger" };
+        ? {
+            text: "text-warn",
+            ring: "stroke-warn",
+            bar: "bg-warn",
+            badge: "bg-warn-soft text-warn",
+          }
+        : {
+            text: "text-danger-ink",
+            ring: "stroke-danger",
+            bar: "bg-danger",
+            badge: "bg-danger-soft text-danger-ink",
+          };
 
   const strengths = strengthsFrom(rows);
   const improvements = improvementsFrom(rows, summary);
@@ -88,7 +107,12 @@ export function EvaluationReport({
             <span className={cn("text-[22px] leading-none font-bold", tone.text)}>
               {band.letter}
             </span>
-            <span className="rounded-full bg-success-soft px-2 py-0.5 text-[11px] font-semibold text-success-ink">
+            <span
+              className={cn(
+                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                tone.badge,
+              )}
+            >
               {band.label}
             </span>
             <span className={cn("text-[13px] font-bold tabular-nums", tone.text)}>
@@ -102,6 +126,8 @@ export function EvaluationReport({
             </span>
           ) : null}
         </span>
+
+        {actions ? <span className="shrink-0">{actions}</span> : null}
       </header>
 
       <dl className="grid grid-cols-2 border-b border-line sm:grid-cols-4">
@@ -141,7 +167,14 @@ export function EvaluationReport({
   );
 }
 
-/** Ring gauge for the score. Purely presentational; the number is the truth. */
+/**
+ * The score, as a ring.
+ *
+ * Green is the resting state because most marked work lands there and a
+ * teacher scanning a class reads colour before digits. It steps to amber and
+ * red only where the score genuinely warrants it — a failing total shown in
+ * green would be the one piece of this screen that lies.
+ */
 function ScoreDial({
   percentage,
   obtained,
@@ -153,27 +186,40 @@ function ScoreDial({
   max: number;
   ringClass: string;
 }) {
-  const radius = 26;
+  const radius = 34;
   const circumference = 2 * Math.PI * radius;
   const filled = (Math.min(100, Math.max(0, percentage)) / 100) * circumference;
 
   return (
-    <span className="relative grid size-16 shrink-0 place-items-center">
-      <svg viewBox="0 0 64 64" className="absolute inset-0 -rotate-90">
-        <circle cx="32" cy="32" r={radius} className="fill-none stroke-line" strokeWidth="6" />
+    <span className="relative grid size-[86px] shrink-0 place-items-center">
+      <svg viewBox="0 0 80 80" className="absolute inset-0 -rotate-90">
         <circle
-          cx="32"
-          cy="32"
+          cx="40"
+          cy="40"
           r={radius}
-          className={cn("fill-none transition-[stroke-dasharray] duration-700 ease-out", ringClass)}
-          strokeWidth="6"
+          className="fill-none stroke-line"
+          strokeWidth="8"
+        />
+        <circle
+          cx="40"
+          cy="40"
+          r={radius}
+          className={cn(
+            "fill-none transition-[stroke-dasharray] duration-700 ease-out",
+            ringClass,
+          )}
+          strokeWidth="8"
           strokeLinecap="round"
           strokeDasharray={`${filled} ${circumference}`}
         />
       </svg>
       <span className="relative text-center leading-none">
-        <span className="block text-[17px] font-bold text-ink tabular-nums">{obtained}</span>
-        <span className="block text-[9px] text-muted tabular-nums">of {max}</span>
+        <span className="block text-[26px] font-bold text-ink tabular-nums">
+          {obtained}
+        </span>
+        <span className="mt-0.5 block text-[10px] font-medium text-muted tabular-nums">
+          out of {max}
+        </span>
       </span>
     </span>
   );
