@@ -15,7 +15,11 @@ import {
   type GradingResult,
 } from "@/lib/ai/grading";
 import { generateModelAnswers } from "@/lib/ai/model-answers";
-import { DocumentError, normalizeDocument } from "@/lib/document/normalize";
+import {
+  DocumentError,
+  normalizeDocument,
+  type PageBitmap,
+} from "@/lib/document/normalize";
 import { transcribeDocument } from "@/lib/vision/transcribe";
 import { extractQuestions } from "@/lib/extraction/questions";
 import { extractAnswers } from "@/lib/extraction/answers";
@@ -29,10 +33,10 @@ import type {
   JobRecord,
   PipelineStage,
   ResultSummary,
+  SourceDocument,
   StageProgress,
 } from "@/lib/types/assessment";
 import { initialStages } from "./stages";
-import { sweepExpiredJobs, writeJob, writePageImage } from "./job-store";
 
 /**
  * The processing pipeline, in the order the assignment specifies:
@@ -66,7 +70,21 @@ export function createJobId(): string {
 class StageTracker {
   private readonly record: JobRecord;
 
-  constructor(jobId: string, includeGrading: boolean) {
+  constructor(
+    jobId: string,
+    includeGrading: boolean,
+    /**
+     * Where a progress snapshot goes.
+     *
+     * This used to be a write to `os.tmpdir()`, which is per-instance. On a
+     * serverless host the upload lands on one instance and every progress poll
+     * lands on another, so the job the client was told about did not exist
+     * anywhere it could look — the run worked and the page showed "no longer
+     * available". Publishing through an injected sink lets the caller stream
+     * snapshots down the same request instead.
+     */
+    private readonly publish: (record: JobRecord) => void,
+  ) {
     this.record = {
       id: jobId,
       status: "queued",
@@ -153,7 +171,7 @@ class StageTracker {
 
   private async flush(): Promise<void> {
     this.record.updatedAt = Date.now();
-    await writeJob(this.record);
+    this.publish(this.record);
   }
 }
 
@@ -254,31 +272,22 @@ export function toJobError(error: unknown, stage: PipelineStage): JobError {
   };
 }
 
-export async function createJob(includeGrading: boolean): Promise<JobRecord> {
-  const jobId = createJobId();
-  const tracker = new StageTracker(jobId, includeGrading);
-  await writeJob(tracker.snapshot);
-  return tracker.snapshot;
-}
-
 export async function runPipeline(params: {
-  jobId: string;
   questionPaper: UploadInput;
   answerSheet: UploadInput;
-}): Promise<void> {
-  const { jobId, questionPaper, answerSheet } = params;
+  /** Called on every stage transition so the caller can stream progress. */
+  onProgress: (record: JobRecord) => void;
+}): Promise<JobRecord> {
+  const { questionPaper, answerSheet, onProgress } = params;
+  const jobId = createJobId();
   const includeGrading = config.gradingEnabled;
-  const tracker = new StageTracker(jobId, includeGrading);
-  // Re-use the id created by createJob so the frontend's poll keeps working.
-  tracker.snapshot.id = jobId;
+  const tracker = new StageTracker(jobId, includeGrading, onProgress);
 
   let stage: PipelineStage = "uploading";
   const warnings: string[] = [];
   const degradations: Degradation[] = [];
 
   try {
-    void sweepExpiredJobs();
-
     const providers = await getProviders();
 
     /**
@@ -336,14 +345,11 @@ export async function runPipeline(params: {
       jobId,
     });
 
-    await Promise.all([
-      ...paper.bitmaps.map((bitmap) =>
-        writePageImage(jobId, "question-paper", bitmap.pageNumber, bitmap.png),
-      ),
-      ...sheet.bitmaps.map((bitmap) =>
-        writePageImage(jobId, "answer-sheet", bitmap.pageNumber, bitmap.png),
-      ),
-    ]);
+    // Inline the rendered pages. A separate image endpoint would have to read
+    // them back from wherever the run happened, which is the same cross-instance
+    // problem in a different shape.
+    inlinePageImages(paper.document, paper.bitmaps);
+    inlinePageImages(sheet.document, sheet.bitmaps);
 
     if (paper.document.pageCount > paper.bitmaps.length) {
       warnings.push(
@@ -400,7 +406,7 @@ export async function runPipeline(params: {
         },
         stage,
       );
-      return;
+      return tracker.snapshot;
     }
     await tracker.complete(
       stage,
@@ -442,7 +448,7 @@ export async function runPipeline(params: {
         },
         stage,
       );
-      return;
+      return tracker.snapshot;
     }
     await tracker.complete(stage, `${answerResult.answers.length} answer(s) found`);
 
@@ -586,6 +592,7 @@ export async function runPipeline(params: {
 
     await tracker.complete(stage);
     await tracker.succeed(result);
+    return tracker.snapshot;
   } catch (error) {
     // Log the real cause server-side; the client only ever sees the sanitized
     // message built by toJobError, which never contains keys or stack traces.
@@ -598,9 +605,22 @@ export async function runPipeline(params: {
       // Nothing is left to do but log it loudly; the client's stall detection
       // is what rescues the user from here.
       console.error(
-        `[pipeline ${jobId}] could not persist the failure state:`,
+        `[pipeline ${jobId}] could not report the failure state:`,
         writeError,
       );
+    }
+  }
+
+  return tracker.snapshot;
+}
+
+/** Turn rendered pages into data URLs carried inside the result itself. */
+function inlinePageImages(document: SourceDocument, bitmaps: PageBitmap[]): void {
+  const byPage = new Map(bitmaps.map((bitmap) => [bitmap.pageNumber, bitmap]));
+  for (const page of document.pages) {
+    const bitmap = byPage.get(page.pageNumber);
+    if (bitmap) {
+      page.imageUrl = `data:image/png;base64,${bitmap.png.toString("base64")}`;
     }
   }
 }

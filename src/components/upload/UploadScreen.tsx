@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { AlertCircle, ArrowRight, GraduationCap, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/Button";
@@ -31,12 +30,13 @@ function validate(file: File, maxMb: number): string | null {
 export function UploadScreen({
   maxUploadMb,
   localMode,
+  onStart,
 }: {
   maxUploadMb: number;
   /** Set when handwriting will be read by local OCR, and why. */
   localMode: "chosen" | "no-key" | null;
+  onStart: (body: FormData) => void;
 }) {
-  const router = useRouter();
   const [files, setFiles] = useState<Partial<Record<Slot, File>>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -65,7 +65,7 @@ export function UploadScreen({
 
   const ready = Boolean(files.questionPaper && files.answerSheet);
 
-  const submit = useCallback(async () => {
+  const submit = useCallback(() => {
     if (!files.questionPaper || !files.answerSheet || submitting) return;
 
     setSubmitting(true);
@@ -74,28 +74,8 @@ export function UploadScreen({
     const body = new FormData();
     body.append("questionPaper", files.questionPaper);
     body.append("answerSheet", files.answerSheet);
-
-    try {
-      const response = await fetch("/api/process", { method: "POST", body });
-      const payload = (await response.json()) as {
-        jobId?: string;
-        error?: { message?: string };
-      };
-
-      if (!response.ok || !payload.jobId) {
-        setError(
-          payload.error?.message ??
-            "The files could not be submitted. Please try again.",
-        );
-        setSubmitting(false);
-        return;
-      }
-      router.push(`/results/${payload.jobId}`);
-    } catch {
-      setError("Could not reach the server. Check your connection and try again.");
-      setSubmitting(false);
-    }
-  }, [files, router, submitting]);
+    onStart(body);
+  }, [files, onStart, submitting]);
 
   return (
     <div className="scrollbar-slim flex-1 overflow-y-auto">

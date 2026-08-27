@@ -513,15 +513,14 @@ request for the whole paper.
 | **Vision / LLM** | Google Gemini · Anthropic Claude · Tesseract.js |
 | **Computer vision** | Hand-written: adaptive threshold, projection profiles, block grouping |
 | **Tests** | Vitest |
-| **State** | In-memory + disk-backed job store. No database, no authentication |
+| **State** | None on the server — the run streams down one request. No database, no authentication |
 
 ```
 src/
   app/
-    page.tsx                     upload screen
-    results/[jobId]/             processing → results (refresh-safe, pollable)
+    page.tsx                     upload → processing → results, one streamed run
     demo/                        saved sample run
-    api/process/                 POST → jobId, GET → status/result, GET → page image
+    api/process/                 POST → streams progress, then the result
   components/
     shell/  upload/  processing/  results/  answer-viewer/  ui/
   lib/
@@ -530,13 +529,12 @@ src/
     vision/      segmentation — the CV that produces every coordinate — transcribe
     extraction/  questions, answers
     mapping/     normalize-label, deterministic, semantic, mapper
-    processing/  pipeline, job-store, stages
+    processing/  pipeline, stages
     types/       assessment.ts — the whole domain model
   test/          137 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   make-edge-fixtures.mjs         one-question and 40-question papers
-  capture-demo.ts                freezes a real run into the demo dataset
 ```
 
 ---
@@ -552,8 +550,9 @@ pure JS, so there are no native system libraries to install.
 2. Add `AI_PROVIDER` and `AI_API_KEY` under **Settings → Environment Variables**.
 3. Deploy.
 
-`POST /api/process` declares `maxDuration = 300` and continues the pipeline in
-`after()`, which keeps the function alive past the response.
+`POST /api/process` declares `maxDuration = 300`. The whole run happens inside
+that one request, so a very long document can outrun the platform's ceiling — the
+client says so plainly and suggests fewer pages rather than hanging.
 
 ### Any Node host — Render, Railway, Fly, a VM
 
@@ -564,13 +563,23 @@ npm ci && npm run build && npm start
 A long-running Node process is the better fit: no execution ceiling, and jobs stay
 on one instance.
 
-### Job storage
+### Why the run streams instead of polling
 
-Jobs and rendered pages live under `os.tmpdir()/vedaai-jobs/<jobId>/`, written
-atomically and swept after an hour. No database, works on serverless and on a VM,
-and survives the module reloads that would drop an in-memory map. It is
-instance-local, so a multi-instance deployment wants a sticky session — or swap
-`lib/processing/job-store.ts`, the only module that touches persistence.
+A run holds no server-side state at all. `POST /api/process` does the whole
+pipeline inside one request and streams newline-delimited JSON back: a run of
+`stage` frames carrying live progress, then exactly one `result` or `error`
+frame. Rendered pages travel inside the result as data URLs.
+
+The first design returned a job id and let the client poll, with state written to
+`os.tmpdir()`. That works on a single machine and fails on a serverless host for
+a reason worth remembering: the upload lands on one instance and every poll lands
+on another, so the job the client was just told about does not exist anywhere it
+can look — the run succeeds and the page reports "no longer available".
+
+Keeping the run inside one request removes the need to share anything between
+instances, needs no database or object store, and gives finer-grained progress
+than polling did. The trade-off is that a result lives in the browser tab: there
+is no URL to bookmark, and reloading starts over.
 
 ---
 

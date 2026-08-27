@@ -1,7 +1,8 @@
-import { after, NextResponse } from "next/server";
-import { config } from "@/lib/config";
+import { NextResponse } from "next/server";
 import { DocumentError, validateUpload } from "@/lib/document/normalize";
-import { createJob, runPipeline } from "@/lib/processing/pipeline";
+import { runPipeline } from "@/lib/processing/pipeline";
+import type { JobRecord } from "@/lib/types/assessment";
+import { stageProgressPercent } from "@/lib/processing/stages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,19 @@ function badRequest(message: string, status = 400) {
   return NextResponse.json({ error: { message } }, { status });
 }
 
+/**
+ * Runs the pipeline and streams progress back on the same request.
+ *
+ * The previous design returned a job id and let the client poll for it, with
+ * state written to `os.tmpdir()`. That is per-instance: on a serverless host
+ * the upload lands on one instance and every poll lands on another, so the job
+ * the client was just told about did not exist anywhere it could look. Keeping
+ * the whole run inside one request removes the need to share anything at all —
+ * and gives finer-grained progress than polling did.
+ *
+ * The response is newline-delimited JSON: a run of `stage` frames, then exactly
+ * one `result` or `error` frame.
+ */
 export async function POST(request: Request) {
   let form: FormData;
   try {
@@ -38,7 +52,9 @@ export async function POST(request: Request) {
       validateUpload({ name: value.name, type: value.type, size: value.size });
     } catch (error) {
       if (error instanceof DocumentError) return badRequest(error.message);
-      return badRequest(`The ${FIELD_LABELS[field].replace(/^an? /, "")} could not be validated.`);
+      return badRequest(
+        `The ${FIELD_LABELS[field].replace(/^an? /, "")} could not be validated.`,
+      );
     }
     files[field] = value;
   }
@@ -55,33 +71,75 @@ export async function POST(request: Request) {
     return badRequest("One of the uploaded files is empty.");
   }
 
-  const job = await createJob(config.gradingEnabled);
+  const encoder = new TextEncoder();
 
-  // Respond immediately with the job id; the pipeline continues in the
-  // background. `after()` keeps the work alive on serverless platforms that
-  // would otherwise freeze the instance once the response is flushed.
-  after(async () => {
-    try {
-      await runPipeline({
-        jobId: job.id,
-        questionPaper: {
-          fileName: questionPaper.name,
-          mimeType: questionPaper.type,
-          bytes: new Uint8Array(paperBytes),
-        },
-        answerSheet: {
-          fileName: answerSheet.name,
-          mimeType: answerSheet.type,
-          bytes: new Uint8Array(sheetBytes),
-        },
-      });
-    } catch (error) {
-      // runPipeline records its own failures, so reaching here means even that
-      // bookkeeping failed. Swallow it: an unhandled rejection in a background
-      // task would take the whole server down instead of one job.
-      console.error(`[api/process] background run ${job.id} threw:`, error);
-    }
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const send = (payload: unknown) => {
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(payload)}\n`));
+        } catch {
+          /* client hung up; the run finishes and is discarded */
+        }
+      };
+
+      const sendStage = (record: JobRecord) =>
+        send({
+          type: "stage",
+          status: record.status,
+          stages: record.stages,
+          progress: stageProgressPercent(record.stages),
+        });
+
+      try {
+        const record = await runPipeline({
+          questionPaper: {
+            fileName: questionPaper.name,
+            mimeType: questionPaper.type,
+            bytes: new Uint8Array(paperBytes),
+          },
+          answerSheet: {
+            fileName: answerSheet.name,
+            mimeType: answerSheet.type,
+            bytes: new Uint8Array(sheetBytes),
+          },
+          onProgress: sendStage,
+        });
+
+        if (record.status === "completed" && record.result) {
+          send({ type: "result", result: record.result });
+        } else {
+          send({
+            type: "error",
+            error: record.error ?? {
+              code: "INTERNAL",
+              message: "Processing did not complete.",
+              retryable: true,
+            },
+          });
+        }
+      } catch (error) {
+        console.error("[api/process] run threw:", error);
+        send({
+          type: "error",
+          error: {
+            code: "INTERNAL",
+            message: "Something went wrong while processing these files.",
+            retryable: true,
+          },
+        });
+      } finally {
+        controller.close();
+      }
+    },
   });
 
-  return NextResponse.json({ jobId: job.id }, { status: 202 });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      // Proxies that buffer would defeat the point of streaming progress.
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

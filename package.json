@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "capture:demo": "tsx scripts/capture-demo.ts",
     "fixtures": "node scripts/make-fixtures.mjs"
   },
   "type": "commonjs",

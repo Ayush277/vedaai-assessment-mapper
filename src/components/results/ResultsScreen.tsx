@@ -1,7 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, ChevronsDownUp, ChevronsUpDown, Search, X } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  RotateCcw,
+  Search,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AnswerRegion, AssessmentResult } from "@/lib/types/assessment";
 import {
@@ -29,7 +36,13 @@ type Selection =
   | { kind: "answer"; answerId: string }
   | null;
 
-export function ResultsScreen({ result }: { result: AssessmentResult }) {
+export function ResultsScreen({
+  result,
+  onStartOver,
+}: {
+  result: AssessmentResult;
+  onStartOver?: () => void;
+}) {
   const rows = useMemo(() => buildQuestionRows(result), [result]);
   const stray = useMemo(() => unmatchedAnswers(result), [result]);
 
@@ -211,6 +224,16 @@ export function ResultsScreen({ result }: { result: AssessmentResult }) {
             Extracted Questions{" "}
             <span className="font-normal text-muted">(from question paper)</span>
           </h2>
+          {onStartOver ? (
+            <button
+              type="button"
+              onClick={onStartOver}
+              className="inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1.5 text-[12px] font-medium text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
+            >
+              <RotateCcw className="size-3.5" />
+              New assessment
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() =>
