@@ -36,6 +36,38 @@ async function createWorker() {
   });
 }
 
+/**
+ * How long to wait for the OCR worker to come up.
+ *
+ * Tesseract runs as a WASM worker that fetches its core and language data on
+ * first use. On some serverless runtimes that worker never starts and the call
+ * simply never settles — the run hangs until the platform kills it, and the
+ * client sees a progress line frozen on the same stage for minutes. Bounding
+ * the wait turns that into a fast, explainable failure.
+ */
+const WORKER_STARTUP_TIMEOUT_MS = 25_000;
+/** A single page should never take this long once the worker is up. */
+const PAGE_TIMEOUT_MS = 40_000;
+
+class LocalOcrUnavailableError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "LocalOcrUnavailableError";
+  }
+}
+
+function withTimeout<T>(work: Promise<T>, ms: number, what: string): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_resolve, reject) =>
+      setTimeout(
+        () => reject(new LocalOcrUnavailableError(`${what} timed out after ${ms}ms`)),
+        ms,
+      ),
+    ),
+  ]);
+}
+
 let workerPromise: Promise<Worker> | null = null;
 
 /**
@@ -45,7 +77,11 @@ let workerPromise: Promise<Worker> | null = null;
  */
 async function getWorker(): Promise<Worker> {
   if (!workerPromise) {
-    workerPromise = createWorker().catch((error) => {
+    workerPromise = withTimeout(
+      createWorker(),
+      WORKER_STARTUP_TIMEOUT_MS,
+      "Local OCR worker startup",
+    ).catch((error) => {
       workerPromise = null;
       throw error;
     });
@@ -72,12 +108,27 @@ function detectLabel(text: string): string | undefined {
 function createVision(): VisionProvider {
   const run = async (input: TranscribeInput): Promise<RegionTranscription[]> => {
     if (input.regions.length === 0) return [];
-    const worker = await getWorker();
+    let worker: Worker;
+    try {
+      worker = await getWorker();
+    } catch (error) {
+      // Nothing can be read without a worker, so fail loudly rather than
+      // returning a page of empty transcriptions that look like a blank sheet.
+      throw new LocalOcrUnavailableError(
+        "Local OCR could not start in this environment. Configure an AI provider (AI_API_KEY) to process documents here.",
+        { cause: error },
+      );
+    }
+
     const results: RegionTranscription[] = [];
 
     for (const region of input.regions) {
       try {
-        const { data } = await worker.recognize(region.jpeg);
+        const { data } = await withTimeout(
+          worker.recognize(region.jpeg),
+          PAGE_TIMEOUT_MS,
+          "Local OCR",
+        );
         const text = (data.text ?? "").replace(/\s+\n/g, "\n").trim();
         results.push({
           index: region.index,

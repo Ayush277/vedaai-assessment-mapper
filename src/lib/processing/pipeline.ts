@@ -240,6 +240,17 @@ export function toJobError(error: unknown, stage: PipelineStage): JobError {
   // wording below. Telling a teacher their question paper is illegible when
   // the real cause was a dropped connection sends them to fix the wrong thing.
   const message = error instanceof Error ? error.message : String(error);
+
+  // Local OCR cannot start on some serverless runtimes. Naming the fix is the
+  // only useful thing to say, and it is a configuration problem, not a retry.
+  if (/Local OCR could not start|LocalOcrUnavailable/i.test(message)) {
+    return {
+      code: "PROVIDER_ERROR",
+      message:
+        "Offline OCR is not available in this environment. Set AI_API_KEY (Gemini or Anthropic) so documents can be read here.",
+      retryable: false,
+    };
+  }
   if (/\bfetch\b|network|timeout|timed out|abort|ECONN|ENOTFOUND|EAI_AGAIN/i.test(message)) {
     return {
       code: "PROVIDER_ERROR",
