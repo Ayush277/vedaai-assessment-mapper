@@ -23,3 +23,7 @@ coverage/
 
 # Generated test fixtures — recreate with `npm run fixtures`
 /fixtures/
+
+# Tesseract downloads its language data at runtime into the working directory.
+# It is a 5MB build artifact, not source — tesseract.js re-fetches it on demand.
+*.traineddata
