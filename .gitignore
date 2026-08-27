@@ -30,3 +30,4 @@ coverage/
 
 # Local editor/agent config, not part of the product
 .claude/
+.env*

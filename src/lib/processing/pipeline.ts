@@ -325,15 +325,28 @@ export async function runPipeline(params: {
         if (!recoverable || providers.vision.degraded) throw error;
 
         console.warn(
-          `[pipeline ${jobId}] ${kind} from ${providers.vision.id}; falling back to local OCR`,
+          `[pipeline ${jobId}] ${kind} from ${providers.vision.id}; trying local OCR`,
         );
         const { createLocalProviders } = await import("@/lib/ai/providers/local");
-        usedFallback = true;
-        fallbackKind = kind;
-        return transcribeDocument({
-          ...params,
-          vision: createLocalProviders().vision,
-        });
+        try {
+          const transcript = await transcribeDocument({
+            ...params,
+            vision: createLocalProviders().vision,
+          });
+          usedFallback = true;
+          fallbackKind = kind;
+          return transcript;
+        } catch (fallbackError) {
+          // The rescue failed too. Report what actually went wrong first — an
+          // exhausted quota is something the reader can act on, whereas
+          // "offline OCR is unavailable" describes only the failed rescue and
+          // hides the real cause.
+          console.warn(
+            `[pipeline ${jobId}] local OCR could not rescue the run:`,
+            fallbackError,
+          );
+          throw error;
+        }
       }
     };
     let fallbackKind: DegradationKind | null = null;
