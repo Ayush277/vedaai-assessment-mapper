@@ -28,6 +28,7 @@ answers, mappings or highlight coordinates is hardcoded.
 | Degraded runs | When an optional AI step cannot run, the results screen names the cause — expired key, exhausted quota, wrong model, network — instead of silently omitting it |
 | Two-way sync | Clicking a question scrolls the sheet to its answer; clicking a region on the sheet opens that question |
 | Grading summary | Score, percentage and correct/partial/incorrect/unanswered/needs-review tallies, all computed from the run |
+| Expected answers | For questions the student left blank, the AI writes what the answer should have been, with the marking points — labelled as the model answer, never as the student's work |
 | Progress | Stage-based, driven by the backend's real position in the pipeline |
 
 ---
@@ -131,7 +132,7 @@ Open http://localhost:3000.
 
 ```bash
 npm run build      # production build
-npm test           # 123 unit tests
+npm test           # 130 unit tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 ```
@@ -239,7 +240,7 @@ during that run — which is itself a real state the app handles.
 npm test
 ```
 
-123 tests over the logic that decides correctness, not the pixels:
+130 tests over the logic that decides correctness, not the pixels:
 
 - **Label normalisation** — `11(a)`, `11 (a)`, `Q11(a)`, `Question 11(a)`, `11-a`
   all collapse to one form; `11` stays distinct from `11a`; OCR digit confusions
@@ -266,6 +267,8 @@ npm test
 - **Degradation reporting** — an exhausted quota, a rejected key and an unconfigured
   provider produce three different explanations rather than three identical blanks;
   mandatory stages still fail loudly while optional ones degrade and say why.
+- **Expected answers** — generated only for unanswered questions, never for attempted
+  ones; a declined answer is dropped rather than guessed; key points are capped.
 
 ### End-to-end verification
 
@@ -316,6 +319,23 @@ Library, Settings, notifications, the AI toolkit. Those are drawn because
 removing them would misrepresent the design, but each is disabled, lock-marked
 and explains itself on hover, focus and tap. Nothing in the interface looks
 clickable and then does nothing.
+
+### Expected answers for unanswered questions
+
+A teacher looking at "Unanswered" wants to know what was being asked for, and
+writing that out by hand for every skipped question is the tedious part of
+marking. `lib/ai/model-answers.ts` writes the answer a well-prepared student
+would have given, sized to the question's marks, plus the points a marker would
+tick.
+
+It is scoped to unanswered questions only, and deliberately so: generating a
+model answer for a question the student *did* attempt would invite reading the
+model's version as the mark scheme. The panel is captioned "Written by AI · not
+the student's work" so it can never be mistaken for extracted handwriting, and a
+question the model declines to answer is dropped rather than filled with a guess.
+
+Cost is bounded — one batched call, at most 20 questions, and no call at all when
+nothing was skipped.
 
 ### Mandatory vs. optional stages
 
@@ -376,7 +396,7 @@ src/
     mapping/     normalize-label, deterministic, semantic, mapper
     processing/  pipeline, job-store, stages
     types/       assessment.ts — the whole domain model
-  test/          123 tests
+  test/          130 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   capture-demo.ts                freezes a real run into the demo dataset

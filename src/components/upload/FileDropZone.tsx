@@ -44,9 +44,11 @@ export function FileDropZone({
         if (!disabled) handleFiles(event.dataTransfer.files);
       }}
       className={cn(
-        "rounded-card border-2 border-dashed bg-surface transition-colors",
-        dragging ? "border-brand bg-brand-soft/40" : "border-line-strong",
-        disabled && "opacity-60",
+        "group rounded-card border-2 border-dashed bg-surface transition-all",
+        dragging
+          ? "border-brand bg-brand-soft/40"
+          : "border-line-strong hover:border-brand/60 hover:bg-brand-soft/20",
+        disabled ? "opacity-60" : "cursor-pointer",
       )}
     >
       <button
@@ -54,9 +56,9 @@ export function FileDropZone({
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
         aria-describedby={describedBy}
-        className="flex w-full flex-col items-center gap-3 px-6 py-10 text-center disabled:cursor-not-allowed"
+        className="flex w-full cursor-pointer flex-col items-center gap-3 px-6 py-10 text-center disabled:cursor-not-allowed"
       >
-        <span className="grid size-11 place-items-center rounded-xl border border-line bg-panel text-ink-soft">
+        <span className="grid size-11 place-items-center rounded-xl border border-line bg-panel text-ink-soft transition-colors group-hover:border-brand/30 group-hover:bg-brand-soft group-hover:text-brand">
           <Upload className="size-5" strokeWidth={1.8} />
         </span>
         <span className="text-[15px] font-semibold text-ink">

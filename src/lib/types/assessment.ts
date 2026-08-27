@@ -141,6 +141,20 @@ export type QuestionGrade = {
   requiresReview: boolean;
 };
 
+/**
+ * What the answer to an unanswered question should have been.
+ *
+ * Generated only for questions the student left blank, and always presented as
+ * the model answer rather than as anything the student wrote — a teacher must
+ * never be able to mistake it for extracted work.
+ */
+export type ModelAnswer = {
+  questionId: string;
+  answer: string;
+  /** The marking points a teacher would look for. */
+  keyPoints: string[];
+};
+
 export type GradingSummary = {
   marksObtained: number;
   maxMarks: number;
@@ -178,7 +192,8 @@ export type DegradationKind =
 export type DegradationStep =
   | "question-structuring"
   | "semantic-matching"
-  | "grading";
+  | "grading"
+  | "model-answers";
 
 export type Degradation = {
   step: DegradationStep;
@@ -212,6 +227,8 @@ export type AssessmentResult = {
   summary: ResultSummary;
   grades?: QuestionGrade[];
   gradingSummary?: GradingSummary;
+  /** Expected answers for the questions that were left unanswered. */
+  modelAnswers?: ModelAnswer[];
   /** Non-fatal problems worth surfacing, e.g. "page 3 had no readable text". */
   warnings: string[];
   /** Optional AI steps that did not run, and why. */

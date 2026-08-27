@@ -1,6 +1,13 @@
 "use client";
 
-import { ChevronDown, Info, Layers, Sparkles } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Info,
+  Layers,
+  Lightbulb,
+  Sparkles,
+} from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 import type { QuestionRow } from "@/lib/view-model";
@@ -21,7 +28,7 @@ export function QuestionCard({
   onSelect: () => void;
   onToggleExpand: () => void;
 }) {
-  const { question, mapping, answer, grade, pages, isMultiPage } = row;
+  const { question, mapping, answer, grade, modelAnswer, pages, isMultiPage } = row;
   const needsReview = mapping.status === "needs_review" || grade?.requiresReview;
 
   const scoreTone =
@@ -141,11 +148,50 @@ export function QuestionCard({
                 ) : null}
               </div>
             ) : (
-              <div className="rounded-xl border border-dashed border-line-strong bg-panel/60 p-3">
-                <p className="text-[13px] font-semibold text-ink">No answer found</p>
-                <p className="mt-0.5 text-[12px] text-muted">
-                  This question appears to be unanswered.
-                </p>
+              <div className="space-y-2.5">
+                <div className="rounded-xl border border-dashed border-line-strong bg-panel/60 p-3">
+                  <p className="text-[13px] font-semibold text-ink">No answer found</p>
+                  <p className="mt-0.5 text-[12px] text-muted">
+                    This question appears to be unanswered.
+                  </p>
+                </div>
+
+                {modelAnswer ? (
+                  <div className="rounded-xl border border-success/25 bg-success-soft/60 p-3">
+                    <p className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[12px] font-bold text-success-ink">
+                      <Lightbulb className="size-3.5" strokeWidth={2.2} />
+                      Expected answer
+                      <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success-ink">
+                        Written by AI · not the student&apos;s work
+                      </span>
+                    </p>
+                    <p className="text-[12px] leading-relaxed whitespace-pre-line text-ink-soft">
+                      {modelAnswer.answer}
+                    </p>
+
+                    {modelAnswer.keyPoints.length > 0 ? (
+                      <>
+                        <p className="mt-2.5 mb-1 text-[11px] font-semibold tracking-wide text-success-ink/80 uppercase">
+                          Marking points
+                        </p>
+                        <ul className="space-y-1">
+                          {modelAnswer.keyPoints.map((point) => (
+                            <li
+                              key={point}
+                              className="flex items-start gap-1.5 text-[12px] leading-relaxed text-ink-soft"
+                            >
+                              <Check
+                                className="mt-0.5 size-3 shrink-0 text-success"
+                                strokeWidth={3}
+                              />
+                              {point}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
             )}
 

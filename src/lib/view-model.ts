@@ -2,6 +2,7 @@ import type {
   Answer,
   AnswerMapping,
   AssessmentResult,
+  ModelAnswer,
   Question,
   QuestionGrade,
 } from "@/lib/types/assessment";
@@ -17,6 +18,8 @@ export type QuestionRow = {
   mapping: AnswerMapping;
   answer?: Answer;
   grade?: QuestionGrade;
+  /** Expected answer, present only when the question went unanswered. */
+  modelAnswer?: ModelAnswer;
   /** Distinct answer-sheet pages this answer occupies, ascending. */
   pages: number[];
   isMultiPage: boolean;
@@ -31,6 +34,9 @@ export function buildQuestionRows(result: AssessmentResult): QuestionRow[] {
   );
   const gradeByQuestion = new Map(
     (result.grades ?? []).map((grade) => [grade.questionId, grade]),
+  );
+  const modelAnswerByQuestion = new Map(
+    (result.modelAnswers ?? []).map((entry) => [entry.questionId, entry]),
   );
 
   return [...result.questions]
@@ -56,6 +62,7 @@ export function buildQuestionRows(result: AssessmentResult): QuestionRow[] {
         mapping,
         answer,
         grade: gradeByQuestion.get(question.id),
+        modelAnswer: modelAnswerByQuestion.get(question.id),
         pages,
         isMultiPage: pages.length > 1,
       } satisfies QuestionRow;

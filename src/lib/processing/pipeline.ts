@@ -14,6 +14,7 @@ import {
   type GradingOutcome,
   type GradingResult,
 } from "@/lib/ai/grading";
+import { generateModelAnswers } from "@/lib/ai/model-answers";
 import { DocumentError, normalizeDocument } from "@/lib/document/normalize";
 import { transcribeDocument } from "@/lib/vision/transcribe";
 import { extractQuestions } from "@/lib/extraction/questions";
@@ -23,6 +24,7 @@ import type {
   AssessmentResult,
   Degradation,
   JobError,
+  ModelAnswer,
   JobRecord,
   PipelineStage,
   ResultSummary,
@@ -443,6 +445,7 @@ export async function runPipeline(params: {
 
     /* ------------------------------ Grading ---------------------------- */
     let grading: GradingResult | null = null;
+    let modelAnswers: ModelAnswer[] | undefined;
     if (includeGrading) {
       stage = "grading";
       await tracker.begin(stage);
@@ -473,6 +476,38 @@ export async function runPipeline(params: {
         degradations.push({ step: "grading", kind: outcome.kind, message });
         await tracker.skip(stage, "Grading unavailable for this run");
       }
+
+      // Write out what the skipped questions should have said. Same provider,
+      // one more batched call, and only for questions with no answer at all.
+      try {
+        const expected = await generateModelAnswers({
+          questions: questionResult.questions,
+          mappings: mappingResult.mappings,
+          reasoning: providers.reasoning,
+        });
+        if (expected.ok) {
+          modelAnswers = expected.answers;
+        } else {
+          degradations.push({
+            step: "model-answers",
+            kind: expected.kind,
+            message: describeDegradation(
+              expected.kind,
+              "writing expected answers for the unanswered questions",
+            ),
+          });
+        }
+      } catch (error) {
+        console.warn(`[pipeline ${jobId}] model answers failed:`, error);
+        degradations.push({
+          step: "model-answers",
+          kind: classifyDegradation(error),
+          message: describeDegradation(
+            classifyDegradation(error),
+            "writing expected answers for the unanswered questions",
+          ),
+        });
+      }
     }
 
     /* ------------------------------ Result ----------------------------- */
@@ -490,6 +525,7 @@ export async function runPipeline(params: {
       summary,
       grades: grading?.grades,
       gradingSummary: grading?.summary,
+      modelAnswers,
       warnings: [...new Set(warnings)],
       // De-duplicated by step: one quota exhaustion knocks out several optional
       // steps, and repeating the same sentence three times helps nobody.

@@ -55,6 +55,18 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Tailwind v4's reset drops the browser default of cursor:pointer on buttons.
+     Stating it once here keeps every clickable control feeling clickable
+     without repeating the class on each one. */
+  :where(button, [role="button"], a, label[for], summary):not(:disabled) {
+    cursor: pointer;
+  }
+
+  :where(button, [role="button"]):disabled,
+  :where(button, [role="button"])[aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   /* A visible, consistent focus ring everywhere — keyboard users get the same
      affordances as mouse users. */
   :where(a, button, input, select, textarea, [tabindex]):focus-visible {

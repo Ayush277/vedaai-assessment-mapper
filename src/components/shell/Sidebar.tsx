@@ -15,7 +15,7 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Logo } from "./Logo";
+import { Logo, LogoMark } from "./Logo";
 import { UnavailableButton } from "./UnavailableButton";
 
 /** Icon metrics are shared so every rail item lines up on the same axis. */
@@ -56,7 +56,7 @@ export function Sidebar({
           collapsed ? "justify-center" : "justify-between",
         )}
       >
-        {collapsed ? null : <Logo />}
+        {collapsed ? <LogoMark size={30} /> : <Logo />}
         <button
           type="button"
           onClick={onToggle}
