@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   classifyDegradation,
   describeDegradation,
@@ -149,6 +149,7 @@ describe("grading reports why it did not run", () => {
 });
 
 describe("question extraction reports why structuring was skipped", () => {
+  // Two questions is below the "looks complete" bar, so the model is consulted.
   const transcript = transcriptFromLines([
     { pageNumber: 1, blocks: [["1. Define an ecosystem."], ["2. Define osmosis."]] },
   ]);
@@ -252,5 +253,57 @@ describe("mapper surfaces matching degradations", () => {
     expect(result.mappings.find((m) => m.questionId === "q_1")?.answerId).toBe("a_1");
     expect(result.similarityMethod).toBe("lexical");
     expect(result.degradations.some((d) => d.kind === "quota")).toBe(true);
+  });
+});
+
+describe("cost control: the structuring call is only made when it can help", () => {
+  it("does not call the model when the printed numbering is already clean", async () => {
+    const transcript = transcriptFromLines([
+      {
+        pageNumber: 1,
+        blocks: [
+          ["1. Define an ecosystem and name its two main components."],
+          ["2. Which blood vessel carries blood away from the heart?"],
+          ["3. Explain the role of chloroplasts in photosynthesis."],
+          ["4. State Newton's first law of motion in full."],
+        ],
+      },
+    ]);
+    const provider = vi.fn();
+    const result = await extractQuestions(transcript, { completeJson: provider });
+
+    expect(result.questions).toHaveLength(4);
+    // A contiguous 1..4 with real text needs no second opinion, and the free
+    // tier meters requests per day.
+    expect(provider).not.toHaveBeenCalled();
+    expect(result.degradations).toEqual([]);
+  });
+
+  it("does call the model when a number is missing from the sequence", async () => {
+    const transcript = transcriptFromLines([
+      {
+        pageNumber: 1,
+        blocks: [
+          ["1. Define an ecosystem and name its two main components."],
+          ["2. Which blood vessel carries blood away from the heart?"],
+          // 3 is missing — something was probably not detected.
+          ["4. State Newton's first law of motion in full."],
+        ],
+      },
+    ]);
+    const provider = vi.fn().mockResolvedValue({ ok: false, kind: "quota" });
+    await extractQuestions(transcript, { completeJson: provider });
+
+    expect(provider).toHaveBeenCalledTimes(1);
+  });
+
+  it("does call the model when only a couple of questions were found", async () => {
+    const transcript = transcriptFromLines([
+      { pageNumber: 1, blocks: [["1. Define an ecosystem properly."]] },
+    ]);
+    const provider = vi.fn().mockResolvedValue({ ok: false, kind: "quota" });
+    await extractQuestions(transcript, { completeJson: provider });
+
+    expect(provider).toHaveBeenCalledTimes(1);
   });
 });

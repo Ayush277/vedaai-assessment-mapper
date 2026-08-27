@@ -29,6 +29,8 @@ answers, mappings or highlight coordinates is hardcoded.
 | Two-way sync | Clicking a question scrolls the sheet to its answer; clicking a region on the sheet opens that question |
 | Grading summary | Score, percentage and correct/partial/incorrect/unanswered/needs-review tallies, all computed from the run |
 | Expected answers | For questions the student left blank, the AI writes what the answer should have been, with the marking points — labelled as the model answer, never as the student's work |
+| Accuracy per question | Two separate readings — how clearly the handwriting was read, and how sure the mapping is — because they fail for opposite reasons |
+| Sub-part hierarchy | `11 (a)` and `11 (b)` are separate entries, indented under `11` and chipped "Part of 11" |
 | Progress | Stage-based, driven by the backend's real position in the pipeline |
 
 ---
@@ -110,10 +112,25 @@ rather than presenting shaky output confidently.
 Adding a provider means one file in `lib/ai/providers/` — no other module
 imports a vendor SDK.
 
+### Accuracy, and why it is two numbers
+
+"Accuracy" hides two different questions: how well the handwriting was *read*,
+and how sure we are it belongs to *this* question. A crisp answer matched by a
+guess and a smudged answer matched by an explicit label are both uncertain, for
+opposite reasons, and a teacher checking the paper needs to know which. Each
+expanded question shows both, plus marks awarded when grading ran.
+
+A real example from a local-OCR run: handwriting read **89%**, match confidence
+**72%** — the writing was legible, but OCR turned "11 (a)" into "10", so the
+match is the part that needs checking, not the transcription.
+
 ### Cost control
 
 Deterministic work happens before any paid call: PDF rasterisation, ink
-segmentation, label parsing and label matching are all local. Region crops are
+segmentation, label parsing and label matching are all local. The AI structuring
+pass is skipped entirely when the printed numbering already came out clean — a
+contiguous run from 1 with real text needs no second opinion, and the free tier
+meters requests per day. Region crops are
 batched twelve to a request, requests are serialised and paced
 (`PROVIDER_MIN_INTERVAL_MS`), unanswered questions are scored zero without an
 LLM call, and grading is a single batched request for the whole paper.
@@ -132,7 +149,7 @@ Open http://localhost:3000.
 
 ```bash
 npm run build      # production build
-npm test           # 130 unit tests
+npm test           # 133 unit tests
 npm run typecheck  # tsc --noEmit
 npm run lint       # eslint
 ```
@@ -240,7 +257,7 @@ during that run — which is itself a real state the app handles.
 npm test
 ```
 
-130 tests over the logic that decides correctness, not the pixels:
+133 tests over the logic that decides correctness, not the pixels:
 
 - **Label normalisation** — `11(a)`, `11 (a)`, `Q11(a)`, `Question 11(a)`, `11-a`
   all collapse to one form; `11` stays distinct from `11a`; OCR digit confusions
@@ -367,9 +384,12 @@ These are real, and the app is built to show them rather than hide them.
 - **Diagrams are described, not understood.** A drawn answer is transcribed as
   `[diagram of ...]` and highlighted correctly, but grading it is unreliable.
 - **Rotated or badly skewed scans** are not deskewed. Pages are EXIF-rotated only.
-- **Free-tier quotas are small.** Gemini's free tier allows ~20 requests/day per
-  model; a five-page run uses several. Rate limits surface as a clear, retryable
-  error rather than a crash.
+- **Free-tier quotas are small.** Gemini's free tier allows **20 requests/day per
+  model**, and a five-page run costs roughly 8: one per page, plus mapping,
+  grading and expected answers. That is about two full runs a day. Rate limits
+  surface as a clear, retryable error rather than a crash, and the progress line
+  says "retrying 4/5 — provider overloaded" rather than appearing to freeze.
+  Enable billing or use a second project for anything more than light testing.
 - **Grading is secondary by design.** It is a single batched call, it degrades to
   "unavailable" without failing the run, and anything the mapper flagged for
   review is flagged in the grade too.
@@ -396,7 +416,7 @@ src/
     mapping/     normalize-label, deterministic, semantic, mapper
     processing/  pipeline, job-store, stages
     types/       assessment.ts — the whole domain model
-  test/          130 tests
+  test/          133 tests
 scripts/
   make-fixtures.mjs              generates the test question paper + answer sheet
   capture-demo.ts                freezes a real run into the demo dataset

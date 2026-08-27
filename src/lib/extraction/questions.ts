@@ -332,6 +332,33 @@ async function structuringPass(
   return { drafts: [...drafts, ...additions] };
 }
 
+/**
+ * True when the deterministic labels form a contiguous run from 1 with no gaps
+ * and every question carries real text. A gap ("1, 2, 4") is the signal that
+ * something was missed and a second opinion is worth paying for.
+ */
+export function looksComplete(drafts: { normalized: string; textParts: string[] }[]): boolean {
+  if (drafts.length < 3) return false;
+
+  const mains = [
+    ...new Set(
+      drafts
+        .map((draft) => Number(parseLabel(draft.normalized).main))
+        .filter((value) => Number.isFinite(value) && value > 0),
+    ),
+  ].sort((a, b) => a - b);
+
+  if (mains.length < 3) return false;
+  if (mains[0] !== 1) return false;
+  for (let i = 1; i < mains.length; i += 1) {
+    if (mains[i] !== mains[i - 1] + 1) return false;
+  }
+
+  return drafts.every(
+    (draft) => draft.textParts.join(" ").trim().length >= MIN_QUESTION_TEXT * 3,
+  );
+}
+
 export async function extractQuestions(
   transcript: DocumentTranscript,
   reasoning: ReasoningProvider | null,
@@ -351,7 +378,11 @@ export async function extractQuestions(
   let drafts = deterministicPass(lines);
   const deterministicCount = drafts.length;
 
-  if (reasoning) {
+  // Skip the model call entirely when the printed numbering already came out
+  // clean. On a well-formed paper the deterministic pass is the answer, and the
+  // free tier meters requests per day — spending one to confirm what is already
+  // unambiguous is exactly the call worth not making.
+  if (reasoning && !looksComplete(drafts)) {
     try {
       const result = await structuringPass(lines, drafts, reasoning);
       drafts = result.drafts;
@@ -370,7 +401,7 @@ export async function extractQuestions(
         "The question structuring step failed; falling back to layout-only detection.",
       );
     }
-  } else {
+  } else if (!reasoning) {
     degradations.push({
       step: "question-structuring",
       kind: "not_configured",

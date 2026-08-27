@@ -3,6 +3,7 @@
 import {
   Check,
   ChevronDown,
+  CornerDownRight,
   Info,
   Layers,
   Lightbulb,
@@ -14,6 +15,7 @@ import type { QuestionRow } from "@/lib/view-model";
 import { confidenceLabel } from "@/lib/view-model";
 import { StatusPill } from "./StatusPill";
 import { EvaluationBadge } from "./EvaluationBadge";
+import { AccuracyMeter } from "./AccuracyMeter";
 
 export function QuestionCard({
   row,
@@ -28,7 +30,17 @@ export function QuestionCard({
   onSelect: () => void;
   onToggleExpand: () => void;
 }) {
-  const { question, mapping, answer, grade, modelAnswer, pages, isMultiPage } = row;
+  const {
+    question,
+    mapping,
+    answer,
+    grade,
+    modelAnswer,
+    pages,
+    isMultiPage,
+    isSubPart,
+    parentLabel,
+  } = row;
   const needsReview = mapping.status === "needs_review" || grade?.requiresReview;
 
   const scoreTone =
@@ -41,7 +53,16 @@ export function QuestionCard({
           : "warn";
 
   return (
-    <li id={`question-card-${question.id}`} className="scroll-mt-2">
+    <li
+      id={`question-card-${question.id}`}
+      className={cn("scroll-mt-2", isSubPart && "relative pl-5")}
+    >
+      {isSubPart ? (
+        <span
+          aria-hidden
+          className="absolute top-0 bottom-0 left-2 w-px bg-line-strong"
+        />
+      ) : null}
       <div
         className={cn(
           "rounded-card border bg-surface transition-all duration-200",
@@ -72,6 +93,12 @@ export function QuestionCard({
                 <span className="text-[13px] font-bold text-ink">
                   {question.label.replace(/[.:]$/, "")}
                 </span>
+                {isSubPart && parentLabel ? (
+                  <Badge tone="brand" className="px-1.5">
+                    <CornerDownRight className="size-3" strokeWidth={2.5} />
+                    Part of {parentLabel}
+                  </Badge>
+                ) : null}
                 {question.section ? (
                   <Badge tone="neutral" className="px-1.5">
                     {question.section}
@@ -194,6 +221,28 @@ export function QuestionCard({
                 ) : null}
               </div>
             )}
+
+            {answer ? (
+              <div className="flex gap-4 rounded-xl border border-line bg-surface px-3 py-2.5">
+                <AccuracyMeter
+                  label="Handwriting read"
+                  value={answer.confidence}
+                  hint="How clearly the vision model could read this handwriting."
+                />
+                <AccuracyMeter
+                  label="Match confidence"
+                  value={mapping.confidence}
+                  hint="How certain the mapping is that this answer belongs to this question."
+                />
+                {grade ? (
+                  <AccuracyMeter
+                    label="Marks awarded"
+                    value={grade.maxMarks > 0 ? grade.marksObtained / grade.maxMarks : 0}
+                    hint={`${grade.marksObtained} of ${grade.maxMarks} marks.`}
+                  />
+                ) : null}
+              </div>
+            ) : null}
 
             {grade ? (
               <div className="rounded-xl border border-brand/20 bg-brand-soft/50 p-3">

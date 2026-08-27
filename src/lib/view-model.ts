@@ -23,6 +23,12 @@ export type QuestionRow = {
   /** Distinct answer-sheet pages this answer occupies, ascending. */
   pages: number[];
   isMultiPage: boolean;
+  /** True when this question is a labelled sub-part of another. */
+  isSubPart: boolean;
+  /** Label of the parent question, e.g. "11" for "11 (b)". */
+  parentLabel?: string;
+  /** True when other entries share this question's parent. */
+  hasSiblings: boolean;
 };
 
 export type FilterKey = "all" | "answered" | "unanswered" | "review";
@@ -38,6 +44,16 @@ export function buildQuestionRows(result: AssessmentResult): QuestionRow[] {
   const modelAnswerByQuestion = new Map(
     (result.modelAnswers ?? []).map((entry) => [entry.questionId, entry]),
   );
+
+  const questionById = new Map(result.questions.map((q) => [q.id, q]));
+  const subPartCountByParent = new Map<string, number>();
+  for (const question of result.questions) {
+    if (!question.parentId) continue;
+    subPartCountByParent.set(
+      question.parentId,
+      (subPartCountByParent.get(question.parentId) ?? 0) + 1,
+    );
+  }
 
   return [...result.questions]
     .sort((a, b) => a.order - b.order)
@@ -65,6 +81,13 @@ export function buildQuestionRows(result: AssessmentResult): QuestionRow[] {
         modelAnswer: modelAnswerByQuestion.get(question.id),
         pages,
         isMultiPage: pages.length > 1,
+        isSubPart: Boolean(question.parentId),
+        parentLabel: question.parentId
+          ? questionById.get(question.parentId)?.label.replace(/[.:]$/, "")
+          : undefined,
+        hasSiblings: question.parentId
+          ? (subPartCountByParent.get(question.parentId) ?? 0) > 1
+          : (subPartCountByParent.get(question.id) ?? 0) > 0,
       } satisfies QuestionRow;
     });
 }
