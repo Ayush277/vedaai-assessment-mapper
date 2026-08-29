@@ -274,6 +274,13 @@ function getPacer(): RequestPacer {
 
 const MAX_RATE_LIMIT_WAIT_MS = 65_000;
 
+/**
+ * Total wall-clock a single operation may spend across all its retries, sized
+ * to leave the request room to report the failure before the host's own
+ * deadline (maxDuration = 300s) closes the connection.
+ */
+const MAX_RETRY_ELAPSED_MS = 170_000;
+
 export type RetryNotice = {
   attempt: number;
   attempts: number;
@@ -286,14 +293,17 @@ export async function withRetry<T>(
   {
     attempts = 5,
     baseDelayMs = 800,
+    maxElapsedMs = MAX_RETRY_ELAPSED_MS,
     onRetry,
   }: {
     attempts?: number;
     baseDelayMs?: number;
+    maxElapsedMs?: number;
     onRetry?: (notice: RetryNotice) => void;
   } = {},
 ): Promise<T> {
   let lastError: unknown;
+  const startedAt = Date.now();
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
@@ -306,6 +316,13 @@ export async function withRetry<T>(
       }
 
       if (attempt === attempts - 1) break;
+
+      // Attempts alone are the wrong budget when each one can run for minutes:
+      // five timeouts outlast the request itself, and the host kills the
+      // response mid-stream. The teacher then sees the connection drop with no
+      // reason given, which is the one outcome worse than a slow run. Giving up
+      // while there is still time to say why turns that into a stated failure.
+      if (Date.now() - startedAt > maxElapsedMs) break;
 
       // Rate limits and "model overloaded" both need a wait measured in tens
       // of seconds; the usual few hundred milliseconds just burns an attempt.
@@ -356,10 +373,18 @@ export class ProviderNetworkError extends ProviderError {
   }
 }
 
+/**
+ * The ceiling is deliberately well clear of a slow-but-healthy call rather than
+ * close to it. Free-tier keys are throttled by latency instead of by 429s: a
+ * sustained run measured a 13.9s mean and an 82.8s worst case on calls that all
+ * returned 200. A 90s ceiling sat 7s above that, so an ordinary slow page would
+ * abort, be retried as a network fault, and stall the run that a longer wait
+ * would have completed.
+ */
 export async function fetchWithTimeout(
   url: string,
   init: RequestInit,
-  timeoutMs = 90_000,
+  timeoutMs = 150_000,
 ): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
