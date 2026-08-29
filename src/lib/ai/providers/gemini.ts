@@ -25,6 +25,13 @@ import {
 } from "../json";
 import { HANDWRITTEN_SYSTEM, PRINTED_SYSTEM } from "../prompts";
 
+/**
+ * Models that reject `thinkingConfig` outright, learned from a 400 rather than
+ * hardcoded, so a new non-reasoning model costs one wasted call and never a
+ * broken run.
+ */
+const modelsRejectingThinkingConfig = new Set<string>();
+
 const API_ROOT = "https://generativelanguage.googleapis.com/v1beta";
 
 type Part =
@@ -65,25 +72,43 @@ async function generate(params: {
 }): Promise<string> {
   const { apiKey, model, system, parts, maxOutputTokens = 8192 } = params;
 
-  const response = await fetchWithTimeout(
-    `${API_ROOT}/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: "user", parts }],
-        generationConfig: {
-          temperature: 0,
-          maxOutputTokens,
-          responseMimeType: "application/json",
+  const send = (suppressThinking: boolean) =>
+    fetchWithTimeout(
+      `${API_ROOT}/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
         },
-      }),
-    },
-  );
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: [{ role: "user", parts }],
+          generationConfig: {
+            temperature: 0,
+            maxOutputTokens,
+            responseMimeType: "application/json",
+            ...(suppressThinking
+              ? { thinkingConfig: { thinkingBudget: 0 } }
+              : {}),
+          },
+        }),
+      },
+    );
+
+  let suppressThinking = !modelsRejectingThinkingConfig.has(model);
+  let response = await send(suppressThinking);
+
+  // Non-reasoning models reject the knob outright. Learn that once per model
+  // rather than spending a wasted round trip on every subsequent call.
+  if (response.status === 400 && suppressThinking) {
+    const detail = await response.clone().text().catch(() => "");
+    if (/thinking/i.test(detail) || /invalid argument/i.test(detail)) {
+      modelsRejectingThinkingConfig.add(model);
+      suppressThinking = false;
+      response = await send(false);
+    }
+  }
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
@@ -107,13 +132,30 @@ async function generate(params: {
   }
 
   const payload = (await response.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
+    candidates?: {
+      content?: { parts?: { text?: string }[] };
+      finishReason?: string;
+    }[];
+    usageMetadata?: { thoughtsTokenCount?: number };
   };
-  const text = payload.candidates?.[0]?.content?.parts
-    ?.map((part) => part.text ?? "")
-    .join("");
+  const candidate = payload.candidates?.[0];
+  const text = candidate?.content?.parts?.map((part) => part.text ?? "").join("");
 
-  if (!text) throw new ProviderError("Gemini returned an empty response.");
+  if (!text) {
+    // A reasoning model draws its thinking from the same budget as its answer,
+    // so it can hit the ceiling having written nothing at all. Reported as an
+    // empty response that would read as an unreadable scan, and the page would
+    // be blamed for a model setting.
+    const thoughts = payload.usageMetadata?.thoughtsTokenCount ?? 0;
+    if (candidate?.finishReason === "MAX_TOKENS" && thoughts > 0) {
+      throw new ProviderError(
+        `${model} spent its entire ${maxOutputTokens}-token budget on internal ` +
+          `reasoning and returned no text. Set AI_MODEL to a non-reasoning ` +
+          `model such as gemini-3.5-flash-lite.`,
+      );
+    }
+    throw new ProviderError("Gemini returned an empty response.");
+  }
   return text;
 }
 

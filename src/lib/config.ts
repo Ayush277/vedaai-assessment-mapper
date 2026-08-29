@@ -2,8 +2,20 @@ import "server-only";
 
 export type ProviderId = "gemini" | "anthropic" | "local";
 
+/**
+ * Pinned, not a `-latest` alias.
+ *
+ * `gemini-flash-latest` drifted onto a reasoning model, and on a reasoning
+ * model `maxOutputTokens` is spent on thinking before any text is emitted: a
+ * transcription that needs 90 output tokens returned 0 on half the pages,
+ * having burned the whole budget thinking about handwriting. It was also ~15x
+ * slower per call, which pushed a four-page run past the request timeout. The
+ * lite model transcribed the same fixture pages in 12.5s against 194.6s, with
+ * identical text where the larger model produced any at all. Transcription is
+ * a mechanical task; paying a reasoning model for it buys nothing.
+ */
 const DEFAULT_MODELS: Record<ProviderId, string> = {
-  gemini: "gemini-flash-latest",
+  gemini: "gemini-3.5-flash-lite",
   anthropic: "claude-sonnet-5",
   local: "tesseract-eng",
 };
