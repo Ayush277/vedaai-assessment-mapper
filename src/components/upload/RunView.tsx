@@ -11,6 +11,7 @@ import { ProcessingScreen } from "@/components/processing/ProcessingScreen";
 import { ErrorScreen } from "@/components/processing/ErrorScreen";
 import { ResultsScreen } from "@/components/results/ResultsScreen";
 import { UploadScreen } from "./UploadScreen";
+import type { SetupState } from "./SetupGuide";
 
 type Frame =
   | { type: "stage"; stages: StageProgress[]; progress: number }
@@ -33,10 +34,10 @@ type Phase =
  */
 export function RunView({
   maxUploadMb,
-  localMode,
+  setup,
 }: {
   maxUploadMb: number;
-  localMode: "chosen" | "no-key" | null;
+  setup: SetupState;
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: "idle" });
   const abortRef = useRef<AbortController | null>(null);
@@ -154,6 +155,6 @@ export function RunView({
   }
 
   return (
-    <UploadScreen maxUploadMb={maxUploadMb} localMode={localMode} onStart={start} />
+    <UploadScreen maxUploadMb={maxUploadMb} setup={setup} onStart={start} />
   );
 }

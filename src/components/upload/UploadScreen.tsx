@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { FileDropZone } from "./FileDropZone";
 import { SelectedFileCard } from "./SelectedFileCard";
 import { StudentFileList } from "./StudentFileList";
+import { SetupGuide, type SetupState } from "./SetupGuide";
 
 type Slot = "questionPaper";
 
@@ -30,12 +31,12 @@ function validate(file: File, maxMb: number): string | null {
 
 export function UploadScreen({
   maxUploadMb,
-  localMode,
+  setup,
   onStart,
 }: {
   maxUploadMb: number;
-  /** Set when handwriting will be read by local OCR, and why. */
-  localMode: "chosen" | "no-key" | null;
+  /** Provider state for the setup guide. Never carries the key itself. */
+  setup: SetupState;
   onStart: (body: FormData) => void;
 }) {
   const [files, setFiles] = useState<Partial<Record<Slot, File>>>({});
@@ -217,31 +218,7 @@ export function UploadScreen({
             : "Upload a question paper and one answer sheet per student to get started"}
         </p>
 
-        {localMode ? (
-          <p className="mt-6 flex max-w-xl items-start gap-2 rounded-xl border border-warn/25 bg-warn-soft px-4 py-3 text-xs text-warn">
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            <span>
-              {localMode === "chosen" ? (
-                <>
-                  Running on local Tesseract OCR because{" "}
-                  <code className="font-mono">AI_PROVIDER</code> is set to{" "}
-                  <code className="font-mono">local</code>. Printed question
-                  papers read well; handwriting recognition will be poor. Set{" "}
-                  <code className="font-mono">AI_PROVIDER=gemini</code> (or{" "}
-                  <code className="font-mono">anthropic</code>) for full accuracy.
-                </>
-              ) : (
-                <>
-                  No AI provider is configured, so extraction runs on local
-                  Tesseract OCR. Printed question papers read well; handwriting
-                  recognition will be poor. Set{" "}
-                  <code className="font-mono">AI_API_KEY</code> in{" "}
-                  <code className="font-mono">.env.local</code> for full accuracy.
-                </>
-              )}
-            </span>
-          </p>
-        ) : null}
+        <SetupGuide setup={setup} />
 
         <Link
           href="/demo"

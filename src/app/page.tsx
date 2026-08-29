@@ -9,7 +9,11 @@ export default function HomePage() {
     <AppShell breadcrumb="Exams">
       <RunView
         maxUploadMb={Math.round(config.maxUploadBytes / (1024 * 1024))}
-        localMode={config.localMode}
+        setup={{
+          providerId: config.providerId,
+          model: config.model,
+          localMode: config.localMode,
+        }}
       />
     </AppShell>
   );
