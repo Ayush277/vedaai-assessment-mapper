@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!--
+    The teacher in the upload hero, drawn to the Figma's framing: head about a
+    third of the circle with clear space above it, shoulders running to the
+    bottom edge so it reads as a portrait, and the notebook held high enough to
+    stay clear of the circular crop. Same illustrated language as the profile
+    avatar, so the two marks in the product belong to one family.
+  -->
+  <defs>
+    <linearGradient id="t-hair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#40465f"/><stop offset="100%" stop-color="#20243a"/>
+    </linearGradient>
+    <linearGradient id="t-blazer" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#414761"/><stop offset="100%" stop-color="#272c3e"/>
+    </linearGradient>
+    <linearGradient id="t-skin" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffdcbe"/><stop offset="100%" stop-color="#f7cba7"/>
+    </linearGradient>
+    <clipPath id="t-round"><circle cx="100" cy="100" r="100"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#t-round)">
+    <rect width="200" height="200" fill="#ffffff"/>
+
+    <!-- shoulders -->
+    <path d="M40 200c0-28 27-44 60-44s60 16 60 44z" fill="url(#t-blazer)"/>
+    <!-- blouse and lapels -->
+    <path d="M88 158h24l-4 42H92z" fill="#f4f5f7"/>
+    <path d="M88 158l12 17-16 25-6-35z" fill="#2e3345"/>
+    <path d="M112 158l-12 17 16 25 6-35z" fill="#2e3345"/>
+
+    <!-- neck -->
+    <path d="M91 136h18v18a9 9 0 0 1-18 0z" fill="#efb68e"/>
+
+    <!-- head -->
+    <ellipse cx="100" cy="108" rx="26" ry="29" fill="url(#t-skin)"/>
+    <ellipse cx="74" cy="111" rx="3.8" ry="5.2" fill="#f7cba7"/>
+    <ellipse cx="126" cy="111" rx="3.8" ry="5.2" fill="#f7cba7"/>
+
+    <!-- bob: one continuous silhouette, tucked behind the jaw -->
+    <path d="M100 76c-16 0-27 13-27 33 0 8 1 15 3 21 1-1 2-2 2-4-2-9-1-18 1-25 12 5 30 5 42 0 2 7 3 16 1 25 0 2 1 3 2 4 2-6 3-13 3-21 0-20-11-33-27-33z" fill="url(#t-hair)"/>
+    <path d="M76 100c3-15 12-24 24-24 10 0 18 5 22 13-11 9-29 12-46 11z" fill="#4c526e"/>
+
+    <!-- glasses -->
+    <g stroke="#2e3345" stroke-width="2.3" fill="none">
+      <rect x="78" y="101" width="20" height="16" rx="5.5" fill="#ffffff" fill-opacity="0.45"/>
+      <rect x="102" y="101" width="20" height="16" rx="5.5" fill="#ffffff" fill-opacity="0.45"/>
+      <path d="M98 108h4" stroke-linecap="round"/>
+      <path d="M78 105l-5-2M122 105l5-2" stroke-linecap="round"/>
+    </g>
+    <circle cx="88" cy="109.5" r="3.2" fill="#242a3d"/>
+    <circle cx="112" cy="109.5" r="3.2" fill="#242a3d"/>
+    <circle cx="89.2" cy="108.3" r="1.1" fill="#ffffff"/>
+    <circle cx="113.2" cy="108.3" r="1.1" fill="#ffffff"/>
+    <path d="M80 95c4-3 10-3 14-1M120 95c-4-3-10-3-14-1" stroke="#2e3345" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+    <!-- blush and smile -->
+    <ellipse cx="80" cy="121" rx="4.6" ry="2.6" fill="#ff9d86" opacity="0.5"/>
+    <ellipse cx="120" cy="121" rx="4.6" ry="2.6" fill="#ff9d86" opacity="0.5"/>
+    <path d="M94.5 127c3.3 3.2 7.7 3.2 11 0" stroke="#c4705a" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+
+    <!-- open notebook, brand orange, held clear of the circular crop -->
+    <g>
+      <path d="M62 176l38-9 38 9v17l-38 8-38-8z" fill="#ff5a26"/>
+      <path d="M68 178l30-7v20l-30 6z" fill="#fff5f1"/>
+      <path d="M132 178l-30-7v20l30 6z" fill="#ffffff"/>
+      <path d="M100 167v33" stroke="#e8431a" stroke-width="2"/>
+      <g stroke="#ffcdb9" stroke-width="1.8" stroke-linecap="round">
+        <path d="M74 181l19-4M74 187l19-4M107 177l19 4M107 183l19 4"/>
+      </g>
+    </g>
+
+    <!-- hands on the covers -->
+    <ellipse cx="65" cy="184" rx="7.5" ry="5.6" fill="#f7cba7" transform="rotate(-13 65 184)"/>
+    <ellipse cx="135" cy="184" rx="7.5" ry="5.6" fill="#f7cba7" transform="rotate(13 135 184)"/>
+  </g>
+</svg>

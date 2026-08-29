@@ -99,15 +99,15 @@
 }
 
 /* Hero underline behind "Question Paper & Answer Sheets" in the Figma. */
+/* The Figma sets the accent phrase on a filled soft-orange block that clears
+   the full cap height, not an underline sitting under the baseline. */
 .brand-underline {
-  background-image: linear-gradient(
-    to top,
-    var(--color-brand-soft) 0,
-    var(--color-brand-soft) 38%,
-    transparent 38%
-  );
-  padding-inline: 0.15em;
-  border-radius: 4px;
+  background-color: var(--color-brand-soft);
+  padding-inline: 0.3em;
+  padding-block: 0.12em;
+  border-radius: 14px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
 }
 
 @keyframes veda-pulse {

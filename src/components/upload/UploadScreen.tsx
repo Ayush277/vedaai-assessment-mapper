@@ -2,13 +2,34 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowRight, GraduationCap, Sparkles } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  BarChart3,
+  CheckCheck,
+  FileText,
+  PenLine,
+  Sparkles,
+} from "lucide-react";
+import Image from "next/image";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { FileDropZone } from "./FileDropZone";
 import { SelectedFileCard } from "./SelectedFileCard";
 import { StudentFileList } from "./StudentFileList";
 import { SetupGuide, type SetupState } from "./SetupGuide";
+
+/**
+ * The four badges orbiting the hero portrait, at the positions the Figma
+ * places them. Each one names a stage of the run, so the ring previews the
+ * work rather than decorating the page.
+ */
+const HERO_BADGES = [
+  { Icon: FileText, left: "70.4%", top: "11.9%", label: "Question paper" },
+  { Icon: PenLine, left: "10.7%", top: "41.9%", label: "Handwriting" },
+  { Icon: CheckCheck, left: "93.7%", top: "70.5%", label: "Answer mapping" },
+  { Icon: BarChart3, left: "35.1%", top: "96.7%", label: "Marks" },
+] as const;
 
 type Slot = "questionPaper";
 
@@ -125,19 +146,30 @@ export function UploadScreen({
 
         <span
           aria-hidden
-          className="relative mt-7 grid size-24 place-items-center rounded-full bg-brand-soft ring-8 ring-brand-soft/40"
+          className="relative mt-7 grid size-[148px] place-items-center rounded-full bg-brand-soft ring-8 ring-brand-soft/40"
         >
-          <GraduationCap className="size-10 text-brand" strokeWidth={1.5} />
-          {[
-            "top-0 left-1/2 -translate-x-1/2 -translate-y-1/2",
-            "right-0 top-1/2 translate-x-1/2 -translate-y-1/2",
-            "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2",
-            "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2",
-          ].map((position) => (
+          <Image
+            src="/avatar/teacher.svg"
+            alt=""
+            width={86}
+            height={86}
+            priority
+            className="size-[86px] rounded-full bg-surface object-cover"
+          />
+
+          {/*
+            The badges sit at the Figma's own angles, which are deliberately
+            uneven — evenly spacing them at 12/3/6/9 reads as a loading spinner
+            rather than as the drawn composition.
+          */}
+          {HERO_BADGES.map(({ Icon, left, top, label }) => (
             <span
-              key={position}
-              className={`absolute size-2.5 rounded-full bg-brand ${position}`}
-            />
+              key={label}
+              style={{ left, top }}
+              className="absolute grid size-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-[8px] bg-brand shadow-[0_2px_6px_rgb(255_90_38_/_0.35)]"
+            >
+              <Icon className="size-3 text-white" strokeWidth={2.5} />
+            </span>
           ))}
         </span>
 
